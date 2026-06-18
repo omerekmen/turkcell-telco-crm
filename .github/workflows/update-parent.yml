@@ -29,22 +29,22 @@ jobs:
             --remote \
             telco-crm
 
-      - name: Build commit message from submodule changes
-        id: commitmsg
+      - name: Build commit message
+        id: msg
         run: |
-          cd telco-crm
-
-          # Get last commit (or range if needed)
-          COMMITS=$(git log --pretty=format:"- %s" -n 10)
-
-          cd ..
-
           echo "message<<EOF" >> $GITHUB_OUTPUT
           echo "chore: update telco-crm submodule" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
-          echo "telco-crm recent changes:" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "${{ github.event.head_commit.message }}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Commit changes
+        run: |
+          git add telco-crm
+
+          git diff --cached --quiet && exit 0
+
+          git commit -m "${{ steps.msg.outputs.message }}"
 
       - name: Push changes
         run: |
