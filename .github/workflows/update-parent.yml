@@ -27,16 +27,24 @@ jobs:
           git submodule update \
             --init \
             --remote \
-            spring-microservices
+            telco-crm
 
-      - name: Commit changes
+      - name: Build commit message from submodule changes
+        id: commitmsg
         run: |
-          git add spring-microservices
+          cd telco-crm
 
-          git diff --cached --quiet && exit 0
+          # Get last commit (or range if needed)
+          COMMITS=$(git log --pretty=format:"- %s" -n 10)
 
-          git commit -m \
-            "chore: update spring-microservices submodule"
+          cd ..
+
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo "chore: update telco-crm submodule" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "telco-crm recent changes:" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Push changes
         run: |
