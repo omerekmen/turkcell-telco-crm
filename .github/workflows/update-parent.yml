@@ -1,0 +1,43 @@
+name: Update Parent Repository
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  update-parent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout parent repository
+        uses: actions/checkout@v4
+        with:
+          repository: omerekmen/turkcell-gygy-java
+          token: ${{ secrets.MAIN_REPO_TOKEN }}
+          submodules: recursive
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Update submodule
+        run: |
+          git submodule update \
+            --init \
+            --remote \
+            spring-microservices
+
+      - name: Commit changes
+        run: |
+          git add spring-microservices
+
+          git diff --cached --quiet && exit 0
+
+          git commit -m \
+            "chore: update spring-microservices submodule"
+
+      - name: Push changes
+        run: |
+          git push origin master
