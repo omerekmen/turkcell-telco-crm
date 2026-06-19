@@ -1,0 +1,18 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.telco.platform</groupId>
+    <artifactId>platform</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>platform-bom</module>
+        <module>platform-core</module>
+        <module>platform-starters</module>
+        <module>platform-autoconfigure</module>
+        <module>platform-event-contracts</module>
+    </modules>
+
+</project>

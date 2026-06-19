@@ -1,0 +1,21 @@
+<project>
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.telco.platform</groupId>
+        <artifactId>platform</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>platform-core</artifactId>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>cqrs</module>
+        <module>mediator</module>
+        <module>outbox</module>
+        <module>inbox</module>
+        <module>common</module>
+    </modules>
+
+</project>
