@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: reference-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:reference}
+    username: ${DB_USER:telco}
+    password: ${DB_PASSWORD:telco}
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    # Service migrations + platform migrations (outbox V900, inbox V901). ADR-016.
+    locations: classpath:db/migration,classpath:db/migration/platform
+
+server:
+  port: ${SERVER_PORT:8102}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+telco:
+  platform:
+    # Demo runs with open endpoints; production enables this and adds spring-boot-starter-security (ADR-011).
+    security:
+      enabled: false
+    observability:
+      correlation:
+        enabled: true
+    outbox:
+      enabled: true
+    inbox:
+      enabled: true
