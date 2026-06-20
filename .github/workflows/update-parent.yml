@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout parent repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: omerekmen/turkcell-gygy-java
           token: ${{ secrets.MAIN_REPO_TOKEN }}
