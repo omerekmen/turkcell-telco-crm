@@ -4,7 +4,6 @@ import com.telco.platform.cqrs.Command;
 import com.telco.platform.cqrs.CommandHandler;
 import com.telco.platform.cqrs.Event;
 import com.telco.platform.cqrs.EventHandler;
-import com.telco.platform.cqrs.Query;
 import com.telco.platform.cqrs.QueryHandler;
 import com.telco.platform.mediator.pipeline.PipelineBehavior;
 import com.telco.platform.mediator.pipeline.RequestHandlerDelegate;

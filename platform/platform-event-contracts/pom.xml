@@ -15,6 +15,12 @@
     <name>platform-event-contracts</name>
     <description>Avro schemas and versioned event definitions (domain.event.v1) per ADR-009 and ADR-019.</description>
 
+    <properties>
+        <!-- Only Avro-generated classes here; static analysis would flag generated code. -->
+        <spotbugs.skip>true</spotbugs.skip>
+        <checkstyle.skip>true</checkstyle.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.apache.avro</groupId>

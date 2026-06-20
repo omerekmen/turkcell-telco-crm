@@ -132,6 +132,7 @@ Exit: all MVP acceptance criteria pass and NFR targets are met.
 | BL-01 | Local infrastructure stack (Docker Compose: PostgreSQL, Kafka/KRaft, Schema Registry, Debezium Connect, Redis, observability) | Required to exercise the event system end to end | Pre-Sprint 003 enabler | DONE (`infra/`) |
 | BL-02 | Starter integration tests (ApplicationContextRunner wiring tests per starter) | Starters are currently verified by compilation/wiring only | Sprint 002 stretch | TODO |
 | BL-03 | platform-observability micrometer/OTel exporter wiring (Tempo) | Correlation filter is in place; tracer export still to wire | Sprint 007 | TODO |
+| BL-04 | Wire Checkstyle + SpotBugs into the platform POMs and the CI static-analysis stage (ADR-014) | Done for the platform reactor (gates bound to verify, CI enforces); extending to the microservices reactor remains | Sprint 002/007 | DONE (platform); microservices TODO |
 
 Note: BL-01 done unblocks Sprint 002 T-010 (Schema Registry runtime) and T-011 (Debezium delivery) -
 the infrastructure now exists; the service-side wiring of those remains.

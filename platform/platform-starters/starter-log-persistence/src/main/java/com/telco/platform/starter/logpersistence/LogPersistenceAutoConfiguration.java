@@ -1,6 +1,5 @@
 package com.telco.platform.starter.logpersistence;
 
-import com.telco.platform.common.logging.ExceptionLogWriter;
 import com.telco.platform.mediator.behavior.support.RequestLogWriter;
 import jakarta.servlet.Filter;
 import org.springframework.beans.factory.ObjectProvider;
