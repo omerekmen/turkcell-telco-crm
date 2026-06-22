@@ -5,10 +5,12 @@ It is derived from `telco-crm-microservices-mvp.docx` (analysis and design), rec
 product requirements (`docs/product/requirements.md`), the event and service catalogs
 (`docs/architecture/`), and the platform ADRs (`architecture/adr/`).
 
-An AI coding agent can execute the entire MVP using only the files in this directory. Each sprint
-file is self-contained: tasks carry IDs, descriptions, business purpose, inputs, outputs, objective
-and testable acceptance criteria, dependencies, and complexity. The original analysis document is
-not required during implementation.
+An AI coding agent can execute the entire MVP using only the files in this directory. Each sprint is
+a directory: a `README.md` holds the sprint objective, epics, cross-cutting constraints, deliverables,
+and exit criteria, and one file per top-level feature (`X.Y-*.md`) holds that feature's subtasks. Each
+subtask carries its ID, description, business purpose, inputs, outputs, objective and testable
+acceptance criteria, dependencies, and complexity. The original analysis document is not required
+during implementation.
 
 ---
 
@@ -28,21 +30,21 @@ not required during implementation.
 
 | Sprint | File | Epic | Theme | Unblocks |
 | --- | --- | --- | --- | --- |
-| 01 | [sprint-01-foundation.md](sprint-01-foundation.md) | 1 | Repository, build, local infrastructure, CI skeleton | All |
-| 02 | [sprint-02-platform-core.md](sprint-02-platform-core.md) | 2 | platform-core libraries (common, cqrs, mediator, outbox, inbox) | 03+ |
-| 03 | [sprint-03-platform-starters-and-events.md](sprint-03-platform-starters-and-events.md) | 3 | Spring Boot starters, Avro event contracts, service template | 04+ |
-| 04 | [sprint-04-platform-infrastructure-services.md](sprint-04-platform-infrastructure-services.md) | 4 | config-server, discovery-server, api-gateway | 05+ |
-| 05 | [sprint-05-security-and-identity.md](sprint-05-security-and-identity.md) | 5 | identity-service, JWT, RBAC, gateway auth | 06+ |
-| 06 | [sprint-06-customer-domain.md](sprint-06-customer-domain.md) | 6 | customer-service (registration, KYC, PII) | 08, 09 |
-| 07 | [sprint-07-product-catalog-domain.md](sprint-07-product-catalog-domain.md) | 7 | product-catalog-service (tariffs, addons, versioning) | 08 |
-| 08 | [sprint-08-order-and-payment.md](sprint-08-order-and-payment.md) | 8 | order-service, payment-service (mock PSP) | 09 |
-| 09 | [sprint-09-subscription-and-onboarding-saga.md](sprint-09-subscription-and-onboarding-saga.md) | 9 | subscription-service, saga, compensation (AC-01) | 11 |
-| 10 | [sprint-10-usage-metering.md](sprint-10-usage-metering.md) | 10 | usage-service, CDR ingestion, quota, thresholds (AC-03) | 11 |
-| 11 | [sprint-11-billing.md](sprint-11-billing.md) | 11 | billing-service, bill-run, invoice PDF (AC-02) | 12 |
-| 12 | [sprint-12-notifications-and-ticketing.md](sprint-12-notifications-and-ticketing.md) | 12 | notification-service, ticket-service | 13 |
-| 13 | [sprint-13-observability-and-resilience.md](sprint-13-observability-and-resilience.md) | 13 | tracing, metrics, logging, Resilience4j rollout | 14 |
-| 14 | [sprint-14-testing-and-hardening.md](sprint-14-testing-and-hardening.md) | 14 | integration/contract tests, security, performance, AC validation | 15 |
-| 15 | [sprint-15-deployment.md](sprint-15-deployment.md) | 15 | Dockerfiles, Kubernetes, HPA, CI/CD, rollback | - |
+| 01 | [sprint-01-foundation/](sprint-01-foundation/README.md) | 1 | Repository, build, local infrastructure, CI skeleton | All |
+| 02 | [sprint-02-platform-core/](sprint-02-platform-core/README.md) | 2 | platform-core libraries (common, cqrs, mediator, outbox, inbox) | 03+ |
+| 03 | [sprint-03-platform-starters-and-events/](sprint-03-platform-starters-and-events/README.md) | 3 | Spring Boot starters, Avro event contracts, service template | 04+ |
+| 04 | [sprint-04-platform-infrastructure-services/](sprint-04-platform-infrastructure-services/README.md) | 4 | config-server, discovery-server, api-gateway | 05+ |
+| 05 | [sprint-05-security-and-identity/](sprint-05-security-and-identity/README.md) | 5 | identity-service, JWT, RBAC, gateway auth | 06+ |
+| 06 | [sprint-06-customer-domain/](sprint-06-customer-domain/README.md) | 6 | customer-service (registration, KYC, PII) | 08, 09 |
+| 07 | [sprint-07-product-catalog-domain/](sprint-07-product-catalog-domain/README.md) | 7 | product-catalog-service (tariffs, addons, versioning) | 08 |
+| 08 | [sprint-08-order-and-payment/](sprint-08-order-and-payment/README.md) | 8 | order-service, payment-service (mock PSP) | 09 |
+| 09 | [sprint-09-subscription-and-onboarding-saga/](sprint-09-subscription-and-onboarding-saga/README.md) | 9 | subscription-service, saga, compensation (AC-01) | 11 |
+| 10 | [sprint-10-usage-metering/](sprint-10-usage-metering/README.md) | 10 | usage-service, CDR ingestion, quota, thresholds (AC-03) | 11 |
+| 11 | [sprint-11-billing/](sprint-11-billing/README.md) | 11 | billing-service, bill-run, invoice PDF (AC-02) | 12 |
+| 12 | [sprint-12-notifications-and-ticketing/](sprint-12-notifications-and-ticketing/README.md) | 12 | notification-service, ticket-service | 13 |
+| 13 | [sprint-13-observability-and-resilience/](sprint-13-observability-and-resilience/README.md) | 13 | tracing, metrics, logging, Resilience4j rollout | 14 |
+| 14 | [sprint-14-testing-and-hardening/](sprint-14-testing-and-hardening/README.md) | 14 | integration/contract tests, security, performance, AC validation | 15 |
+| 15 | [sprint-15-deployment/](sprint-15-deployment/README.md) | 15 | Dockerfiles, Kubernetes, HPA, CI/CD, rollback | - |
 
 Task IDs are hierarchical: `epic.feature.task` (for example `6.2.3`); subtasks add a fourth level
 (`6.2.3.1`). The epic number equals the sprint number.
