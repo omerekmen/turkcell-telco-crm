@@ -29,6 +29,12 @@ public final class PlatformPropertyKeys {
     /** Observability starter properties ({@code telco.platform.observability.*}). */
     public static final String OBSERVABILITY = ROOT + ".observability";
 
+    /** Logging properties root ({@code telco.platform.logging.*}). */
+    public static final String LOGGING = ROOT + ".logging";
+
+    /** PII masking properties ({@code telco.platform.logging.masking.*}, ADR-021). */
+    public static final String MASKING = LOGGING + ".masking";
+
     private PlatformPropertyKeys() {
     }
 }

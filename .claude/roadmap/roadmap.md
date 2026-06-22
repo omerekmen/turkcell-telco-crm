@@ -28,7 +28,7 @@ Section 11). Product-level phases are in [`docs/product/roadmap.md`](../../docs/
 | Current phase | P0 - Platform Foundation |
 | Active sprint | Sprint 002 - Starters, Event System, Service Template |
 | Last completed | Sprint 001 - Platform Core Bootstrap (DONE) |
-| Last updated | 2026-06-20 |
+| Last updated | 2026-06-22 |
 
 ---
 
@@ -119,8 +119,8 @@ Exit: domain events trigger notifications; SLA-based ticketing works.
 
 Goal: meet non-functional targets and prepare for production.
 Includes: performance validation (NFR-01, NFR-02); observability rollout (NFR-07..09); security
-hardening - mTLS, PII encryption, audit log (NFR-05, NFR-06, NFR-12); Kubernetes deployment, HPA,
-rollback (ADR-014); resilience validation (NFR-10).
+hardening - mTLS, PII storage encryption, PII telemetry masking (ADR-021), audit log (NFR-05,
+NFR-06, NFR-12); Kubernetes deployment, HPA, rollback (ADR-014); resilience validation (NFR-10).
 Exit: all MVP acceptance criteria pass and NFR targets are met.
 
 ---

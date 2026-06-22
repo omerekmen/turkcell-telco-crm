@@ -34,3 +34,16 @@ telco:
       enabled: true
     inbox:
       enabled: true
+    # PII masking for the log/persistence view only; never affects event payloads or API responses (ADR-021).
+    logging:
+      masking:
+        enabled: true
+        default-strategy: PARTIAL   # FULL | PARTIAL | HASH | EMAIL
+        mask-char: "*"
+        keep-last: 4
+        patterns:                   # free-text backstop (Layer B), all on by default
+          tckn: true
+          msisdn: true
+          iban: true
+          email: true
+          pan: true

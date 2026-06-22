@@ -30,6 +30,13 @@
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
 
+        <!-- Logback PII backstop converter (ADR-021 Layer B); opt-in via logback-spring.xml. -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Web filter for correlation propagation; opt-in via @ConditionalOnClass. -->
         <dependency>
             <groupId>org.springframework</groupId>
