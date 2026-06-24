@@ -189,19 +189,24 @@ as services are added. See the roadmap for delivery sequencing.
 | Topic | Document |
 | --- | --- |
 | Documentation index | [docs/README.md](docs/README.md) |
+| MVP analysis and design brief | [docs/product/TELCO-CRM-MVP.md](docs/product/TELCO-CRM-MVP.md) |
+| Enterprise evolution (post-MVP) | [docs/product/TELCO-CRM-ADVANCED.md](docs/product/TELCO-CRM-ADVANCED.md) |
 | Business requirements | [docs/product/BRD.md](docs/product/BRD.md) |
 | Functional and non-functional requirements | [docs/product/requirements.md](docs/product/requirements.md) |
 | Product roadmap | [docs/product/roadmap.md](docs/product/roadmap.md) |
 | Service catalog | [docs/architecture/service-catalog.md](docs/architecture/service-catalog.md) |
 | Event catalog | [docs/architecture/event-catalog.md](docs/architecture/event-catalog.md) |
+| API contracts | [docs/api-contracts/](docs/api-contracts/) |
 | Architecture decisions | [architecture/adr/](architecture/adr/) |
+| Implementation backlog | [docs/tasks/](docs/tasks/) |
+| Delivery status dashboard | [docs/tasks/STATUS.md](docs/tasks/STATUS.md) |
 
 ## Roadmap
 
 Delivery is phased: P0 platform foundation, P1 identity and master data, P2 onboarding saga,
 P3 revenue cycle, P4 engagement and support, P5 hardening and release. See
-[docs/product/roadmap.md](docs/product/roadmap.md) and the execution detail in
-[.claude/roadmap/](.claude/roadmap/).
+[docs/product/roadmap.md](docs/product/roadmap.md) and the live execution status in
+[docs/tasks/STATUS.md](docs/tasks/STATUS.md).
 
 ## Contributing
 
