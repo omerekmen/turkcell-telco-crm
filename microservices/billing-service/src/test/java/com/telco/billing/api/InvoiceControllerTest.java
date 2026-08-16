@@ -76,7 +76,7 @@ class InvoiceControllerTest {
                 .thenReturn(new UserContext("admin-user", Set.of("ADMIN"), null, null));
         InvoiceResponse invoiceResponse = new InvoiceResponse(
                 invoiceId, UUID.randomUUID(), UUID.randomUUID(), null, null,
-                null, null, null, "TRY", null, null, null, null, null, List.of());
+                null, null, null, "TRY", null, null, null, null, null, null, List.of());
         when(mediator.query(new GetInvoiceByIdQuery(invoiceId, "admin-user", true, null)))
                 .thenReturn(invoiceResponse);
         when(responses.ok(invoiceResponse)).thenReturn(ApiResult.ok(invoiceResponse, null));

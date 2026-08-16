@@ -1,6 +1,7 @@
 package com.telco.billing.application.dto;
 
 import com.telco.billing.domain.Invoice;
+import com.telco.billing.domain.InvoiceDisputeStatus;
 import com.telco.billing.domain.InvoiceStatus;
 
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ public record InvoiceResponse(
         BigDecimal grandTotal,
         String currency,
         InvoiceStatus status,
+        InvoiceDisputeStatus disputeStatus,
         LocalDate dueDate,
         Instant issuedAt,
         String pdfRef,
@@ -38,6 +40,7 @@ public record InvoiceResponse(
                 invoice.getGrandTotal(),
                 invoice.getCurrency(),
                 invoice.getStatus(),
+                invoice.getDisputeStatus(),
                 invoice.getDueDate(),
                 invoice.getIssuedAt(),
                 invoice.getPdfRef(),

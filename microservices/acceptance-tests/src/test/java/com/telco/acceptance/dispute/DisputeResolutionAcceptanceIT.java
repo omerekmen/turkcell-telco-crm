@@ -55,7 +55,7 @@ class DisputeResolutionAcceptanceIT {
      * {@code COMPLETED} payment - mirrors {@code MonthlyInvoiceAcceptanceIT}'s own precondition
      * exactly, since both scenarios need a genuinely paid invoice/payment pair to dispute against.
      */
-    private record PaidInvoice(UUID customerId, String customerToken, UUID invoiceId, UUID paymentId,
+    private record PaidInvoice(UUID customerId, String customerToken, UUID invoiceId, UUID orderId, UUID paymentId,
                                BigDecimal grandTotal) {
     }
 
@@ -113,7 +113,7 @@ class DisputeResolutionAcceptanceIT {
                     assertThat(paidInvoice.get("status")).isEqualTo("PAID");
                 });
 
-        return new PaidInvoice(subscription.customerId(), customerToken, invoiceId, paymentId[0], grandTotal);
+        return new PaidInvoice(subscription.customerId(), customerToken, invoiceId, orderId, paymentId[0], grandTotal);
     }
 
     @Test
@@ -144,7 +144,7 @@ class DisputeResolutionAcceptanceIT {
                 .atMost(AcceptanceConfig.SAGA_TIMEOUT)
                 .pollInterval(AcceptanceConfig.POLL_INTERVAL)
                 .untilAsserted(() -> {
-                    Response payment = GatewayApi.getPaymentByOrder(adminToken, paid.paymentId());
+                    Response payment = GatewayApi.getPaymentByOrder(adminToken, paid.orderId());
                     payment.then().statusCode(200);
                     assertThat(payment.jsonPath().getString("data.status")).isEqualTo("REFUNDED");
                 });
@@ -161,6 +161,28 @@ class DisputeResolutionAcceptanceIT {
                 "DUPLICATE_CHARGE", paid.grandTotal());
         openResponse.then().statusCode(201);
         UUID disputeId = UUID.fromString(openResponse.jsonPath().getString("data"));
+
+        // billing-service's DisputeOpenedBillingConsumer and DisputeResolvedMerchantBillingConsumer
+        // are independent consumer groups on the same dispute.events topic (each with its own
+        // dedicated groupId, by design - see DisputeOpenedBillingConsumer's javadoc). Resolving
+        // before the hold has actually landed races the two groups against each other: if the
+        // resolved-merchant consumer gets there first, ClearInvoiceDisputeHoldCommand's redelivery-safe
+        // "only clear if ON_HOLD" guard silently no-ops, and the later PlaceInvoiceOnDisputeHoldCommand
+        // leaves the invoice ON_HOLD with no further event to clear it. Waiting for the hold to be
+        // visible first removes the race, matching every other step in this test.
+        await("billing-service's DisputeOpenedBillingConsumer places the invoice ON_HOLD")
+                .atMost(AcceptanceConfig.SAGA_TIMEOUT)
+                .pollInterval(AcceptanceConfig.POLL_INTERVAL)
+                .untilAsserted(() -> {
+                    Response invoices = GatewayApi.getInvoices(paid.customerToken(), paid.customerId());
+                    invoices.then().statusCode(200);
+                    List<Map<String, Object>> content = invoices.jsonPath().getList("data.content");
+                    Map<String, Object> invoice = content.stream()
+                            .filter(i -> paid.invoiceId().toString().equals(i.get("id")))
+                            .findFirst()
+                            .orElseThrow(() -> new AssertionError("invoice " + paid.invoiceId() + " missing from list"));
+                    assertThat(invoice.get("disputeStatus")).isEqualTo("ON_HOLD");
+                });
 
         GatewayApi.resolveDispute(adminToken, disputeId, "MERCHANT", null)
                 .then().statusCode(200);
@@ -179,6 +201,7 @@ class DisputeResolutionAcceptanceIT {
                 .pollInterval(AcceptanceConfig.POLL_INTERVAL)
                 .untilAsserted(() -> {
                     Response invoices = GatewayApi.getInvoices(paid.customerToken(), paid.customerId());
+                    invoices.then().statusCode(200);
                     List<Map<String, Object>> content = invoices.jsonPath().getList("data.content");
                     Map<String, Object> invoice = content.stream()
                             .filter(i -> paid.invoiceId().toString().equals(i.get("id")))
@@ -190,7 +213,7 @@ class DisputeResolutionAcceptanceIT {
                     assertThat(invoice.get("status")).isEqualTo("PAID");
                 });
 
-        Response paymentAfterResolution = GatewayApi.getPaymentByOrder(adminToken, paid.paymentId());
+        Response paymentAfterResolution = GatewayApi.getPaymentByOrder(adminToken, paid.orderId());
         paymentAfterResolution.then().statusCode(200);
         assertThat(paymentAfterResolution.jsonPath().getString("data.status")).isEqualTo("COMPLETED");
     }

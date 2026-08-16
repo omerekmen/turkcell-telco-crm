@@ -34,6 +34,10 @@ import java.util.UUID;
  * acts only when the {@code eventType} header equals {@code payment.completed.v1} (fails closed on a
  * missing/other type). It never decides on payload shape.
  *
+ * <p>Not every {@code payment.completed.v1} is an onboarding charge: a non-null {@code invoiceId}
+ * marks a direct/admin invoice-settlement payment (Section 14.2), which has no order to activate and
+ * is skipped entirely - no order-service hop, no activation, no compensation.
+ *
  * <p>Failure modes are deliberately split so a transient outage never compensates:
  * <ul>
  *   <li>TRANSIENT order lookup failure ({@link DependencyFailureException}: order-service down,
@@ -108,6 +112,13 @@ public class PaymentCompletedEventConsumer {
 
         if (payload.orderId() == null || payload.customerId() == null) {
             LOGGER.warn("Ignoring payment.completed.v1 missing orderId/customerId messageId={}", messageId);
+            return;
+        }
+        if (payload.invoiceId() != null) {
+            // Direct/admin invoice-settlement payment (Section 14.2), not an order-driven onboarding
+            // charge: no order to look up, no subscription to activate, no saga to compensate.
+            LOGGER.debug("Ignoring payment.completed.v1 for invoice-settlement payment invoiceId={} "
+                    + "messageId={}", payload.invoiceId(), messageId);
             return;
         }
         UUID orderId = UUID.fromString(payload.orderId());

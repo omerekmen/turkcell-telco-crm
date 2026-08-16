@@ -3,6 +3,7 @@ package com.telco.subscription;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.telco.platform.common.exception.DependencyFailureException;
@@ -78,10 +79,17 @@ class PaymentCompletedConsumerTest {
     private ConsumerRecord<String, String> paymentCompletedRecord(String messageId, UUID orderId,
                                                                   UUID customerId, long offset,
                                                                   String eventType) {
+        return paymentCompletedRecord(messageId, orderId, customerId, offset, eventType, null);
+    }
+
+    private ConsumerRecord<String, String> paymentCompletedRecord(String messageId, UUID orderId,
+                                                                  UUID customerId, long offset,
+                                                                  String eventType, UUID invoiceId) {
         String json = "{\"paymentId\":\"" + UUID.randomUUID() + "\","
                 + "\"orderId\":\"" + orderId + "\","
                 + "\"customerId\":\"" + customerId + "\","
                 + "\"amount\":49.99,"
+                + (invoiceId != null ? "\"invoiceId\":\"" + invoiceId + "\"," : "")
                 + "\"occurredAt\":\"2026-06-30T00:00:00Z\"}";
         ConsumerRecord<String, String> record =
                 new ConsumerRecord<>("payment.events", 0, offset, messageId, json);
@@ -210,6 +218,25 @@ class PaymentCompletedConsumerTest {
                 .isEqualTo(0L);
         // Inbox must NOT be recorded, so a redelivery re-attempts the hop.
         assertThat(count("SELECT count(*) FROM inbox_message")).isEqualTo(0L);
+    }
+
+    @Test
+    void invoice_settlement_payment_is_skipped_without_order_lookup_or_activation_failure() {
+        // A non-null invoiceId marks a direct/admin invoice-settlement payment (Section 14.2), not an
+        // order-driven onboarding charge: no order to activate, so this must not hit order-service at
+        // all, must not activate a subscription, and must not emit an activation-failed compensation
+        // event even though orderId does not resolve to a real order.
+        UUID orderId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+        UUID invoiceId = UUID.randomUUID();
+
+        consumer.onPaymentCompleted(paymentCompletedRecord(
+                "msg-invoice", orderId, customerId, 0L, "payment.completed.v1", invoiceId));
+
+        assertThat(count("SELECT count(*) FROM subscriptions")).isEqualTo(0L);
+        assertThat(count("SELECT count(*) FROM outbox_event WHERE event_type = 'subscription.activation-failed.v1'"))
+                .isEqualTo(0L);
+        verifyNoInteractions(orderServiceClient);
     }
 
     @Test
