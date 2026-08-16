@@ -31,62 +31,86 @@
 #
 # Why every JVM here is explicitly capped: a JVM with no -Xmx sizes its heap from
 # the HOST's RAM (MaxRAMPercentage of ~15.7 GB), not from what Docker can spare.
-# The full stack is 23 containers, ~15 of them JVMs; each one independently decided
+# The full stack is 23+ containers, ~19 of them JVMs; each one independently decided
 # it could have multiple GB of heap. Running them together drove free memory to
 # 0.6 GB and OOM-hung the Docker engine (API returned 500s until Docker Desktop was
 # restarted). Every JVM below therefore gets an explicit heap cap, overridable from
 # infra/docker/.env. Do not remove these caps to "fix" a slow service - raise the
 # one cap that needs it.
 #
+# EVERY container also carries an explicit `mem_limit:` (a hard cgroup ceiling, not
+# just a JVM -Xmx hint). Two containers were the actual root cause of runs needing
+# ~16 GB despite every JVM already being capped: (1) mongo's WiredTiger storage
+# engine defaults its cache to 50% of (host RAM - 1 GB), computed from the HOST,
+# completely ignoring any per-container heap tuning - now pinned with
+# --wiredTigerCacheSizeGB=0.25; and (2) nothing enforced a hard ceiling on ANY
+# container (JVM or native), so a JVM's off-heap growth (metaspace fragmentation,
+# native buffers, thread stacks) or a native process' own growth had no backstop.
+# mem_limit closes that gap for all 33 services in this file, JVM and native alike.
+#
 # THE REAL CEILING IS THE DOCKER VM, NOT THE HOST. The host has 15.7 GB, but every
 # container runs inside Docker Desktop's Linux VM, which is hard-capped. Measure it -
 # do not guess:
 #
-#   docker info --format '{{.MemTotal}}'   ->  8171184128 bytes = 7793 MiB = 7.61 GiB
+#   docker info --format '{{.MemTotal}}'
 #
-# That 7.61 GiB is the absolute ceiling for ALL containers combined. The VM's own
-# kernel + dockerd + containerd take ~400-500 MB of it, leaving roughly 7.3 GB for
-# containers. Budget below targets ~6.8 GB so the engine keeps a real reserve: it was
-# running the VM down to near-zero free that hung the Docker API in the first place.
-# (Raise the ceiling if you want more comfort: set memory= in %USERPROFILE%\.wslconfig
-# and `wsl --shutdown`. Nothing here depends on that.)
+# That number is the absolute ceiling for ALL containers combined. The VM's own
+# kernel + dockerd + containerd take ~400-500 MB of it. (Raise the ceiling if you
+# want more comfort: set memory= in %USERPROFILE%\.wslconfig and `wsl --shutdown`
+# on Windows, or Docker Desktop > Settings > Resources on macOS. Nothing here
+# depends on that.)
 #
 # Budget for the SPRINT 16 E2E SUBSET (see "Sprint 16 E2E subset" below).
 # JVM RSS is heap + metaspace + code cache + thread stacks + direct buffers + GC
-# native, so each estimate sits well above its -Xmx.
+# native, so each estimate sits well above its -Xmx; mem_limit is the hard ceiling
+# each container is now capped at (with headroom above the estimate).
 #
-#   container                  heap cap (-Xmx)   est. RSS
-#   -------------------------  ---------------   --------
-#   postgres                   n/a (native)        350 MB
-#   redis                      n/a (native)         40 MB
-#   minio                      n/a (native)        200 MB
-#   kafka                      320m                620 MB
-#   kafka-connect              448m                780 MB   (Debezium, saga path)
-#   keycloak                   256m                500 MB
-#   config-server              160m                330 MB
-#   discovery-server           160m                320 MB
-#   api-gateway                256m                470 MB
-#   7 domain services          192m each          2800 MB   (400 MB each)
-#   web-bff                    192m                380 MB
-#   -------------------------  ---------------   --------
-#   TOTAL (18 long-lived containers)              6790 MB  ~= 6.63 GB
+#   container                  heap cap (-Xmx)   est. RSS   mem_limit
+#   -------------------------  ---------------   --------   ---------
+#   postgres                   n/a (native)        350 MB     768m   (headroom: shared by
+#                                                                     every service's schema)
+#   redis                      n/a (native)         40 MB     128m
+#   minio                      n/a (native)        200 MB     384m
+#   kafka                      320m                620 MB     768m
+#   kafka-connect              448m                780 MB     900m   (Debezium, saga path)
+#   keycloak                   256m                500 MB     640m
+#   config-server              160m                330 MB     448m
+#   discovery-server           160m                320 MB     448m
+#   api-gateway                256m                470 MB     640m
+#   7 domain services          192m each          2800 MB    3920m   (560m each)
+#   web-bff                    192m                380 MB     560m
+#   -------------------------  ---------------   --------   ---------
+#   TOTAL (18 long-lived containers)              6790 MB    ~9.7 GB ceiling
 #
-# Plus two short-lived one-shots that exit (createbuckets ~20 MB, keycloak-config
-# ~150 MB JVM). Startup peak is therefore ~6.95 GB, inside the ~7.3 GB usable, with
-# ~350 MB of engine reserve left. It fits - but only just, and only for this subset.
+# Measured (not estimated) actual RSS via `docker stats` for the FULL 25-container
+# auth+platform+apps stack (all 13 domain services, not just the 7 above) right after
+# startup + connector registration: ~8.65 GB total, every container comfortably under
+# its mem_limit. See the FULL STACK section below for the full-stack ceiling.
+#
+# Plus two short-lived one-shots that exit (createbuckets, keycloak-config).
 # Do not start observability/tools/mongo/identity/notification/ticket alongside it.
 #
 # These heaps are sized for a functional single-user E2E walk-through, not for load.
-# If one service genuinely OOMEs, raise that ONE cap in infra/docker/.env rather than
-# widening them all. The SvelteKit dev server runs on the HOST, outside this VM, so it
-# does not draw on this budget.
+# If one service genuinely OOMEs, raise that ONE cap (both JAVA_TOOL_OPTIONS and
+# mem_limit together) in infra/docker/.env / compose.yml rather than widening them
+# all. The SvelteKit dev server runs on the HOST, outside this VM, so it does not
+# draw on this budget.
 #
-# campaign-service (Sprint 21, port 9011) joined the apps profile 2026-07-18: one more
-# 192m-heap JVM (~400 MB RSS) on the same caps. It is NOT in the Sprint 16 subset. The
-# full auth+platform+apps stack (now 11 domain services + campaign-service's share of
-# the budget) needs a Docker VM comfortably above the 7.61 GiB documented here - gate
-# with `docker info --format '{{.MemTotal}}'` (>= ~12 GiB recommended) before a full-
-# stack run.
+# FULL auth+platform+apps STACK (all 13 domain services - identity, customer,
+# product-catalog, order, subscription, usage, billing, payment, notification,
+# ticket, campaign, dispute, fraud - plus mongo, schema-registry, kafka-connect,
+# keycloak, and the 3 platform services, 25 long-lived containers total): with
+# every container mem_limit-capped (mongo 384m, schema-registry 384m, domain
+# services + web-bff 560m each), the hard ceiling for the whole default CI combo
+# (`--profile auth --profile platform --profile apps`) sums to ~13.4 GB worst
+# case. MEASURED actual RSS via `docker stats --no-stream` right after bringing
+# up this exact combo + registering all 13 Debezium connectors: ~8.65 GB total,
+# every container under 95% of its cap. A Docker VM of ~11-12 GiB comfortably
+# runs the full stack (verified: this was done against an 11.67 GiB VM) - down
+# from the previously undocumented, effectively unbounded requirement that
+# reached ~16 GB in practice, driven mainly by mongo's uncapped WiredTiger cache
+# (no per-container ceiling existed at all before mem_limit was added here).
+# Gate with `docker info --format '{{.MemTotal}}'` before a full-stack run.
 # ---------------------------------------------------------------------------
 #
 # Sprint 16 E2E subset (fits the budget above):
@@ -189,6 +213,7 @@ services:
   postgres:
     image: postgres:${POSTGRES_VERSION:-17}
     container_name: telco-postgres
+    mem_limit: 768m
     restart: *restart
     # wal_level=logical is required for Debezium change data capture (ADR-005).
     # Slot/sender ceilings sized for one replication slot per outbox connector (11 as
@@ -225,6 +250,7 @@ services:
   redis:
     image: redis:${REDIS_VERSION:-8}
     container_name: telco-redis
+    mem_limit: 128m
     restart: *restart
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-telco}", "--appendonly", "yes"]
     ports:
@@ -246,7 +272,13 @@ services:
   mongo:
     image: mongo:${MONGO_VERSION:-7}
     container_name: telco-mongo
+    mem_limit: 384m
     restart: *restart
+    # WiredTiger's default cache is 50% of (host RAM - 1 GB), computed from the HOST, not
+    # from mem_limit above - uncapped, it was the single largest undocumented contributor to
+    # this stack's real-world memory footprint (see MEMORY BUDGET at the top of this file).
+    # 0.25 GB is ample for notification-service's local dev document store.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
     ports:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
@@ -263,6 +295,7 @@ services:
   kafka:
     image: apache/kafka:${KAFKA_VERSION:-4.0.0}
     container_name: telco-kafka
+    mem_limit: 768m
     restart: *restart
     ports:
       - "${KAFKA_HOST_PORT:-29092}:29092"
@@ -301,6 +334,7 @@ services:
   schema-registry:
     image: confluentinc/cp-schema-registry:${SCHEMA_REGISTRY_VERSION:-7.9.0}
     container_name: telco-schema-registry
+    mem_limit: 384m
     restart: *restart
     depends_on:
       kafka:
@@ -329,6 +363,7 @@ services:
   kafka-connect:
     image: quay.io/debezium/connect:${DEBEZIUM_CONNECT_VERSION:-3.1.0.Final}
     container_name: telco-kafka-connect
+    mem_limit: 900m
     restart: *restart
     depends_on:
       kafka:
@@ -371,6 +406,7 @@ services:
       dockerfile: microservices/config-server/Dockerfile
     image: telco-config-server:local
     container_name: telco-config-server
+    mem_limit: 448m
     restart: *restart
     profiles: [platform, apps]
     ports:
@@ -412,6 +448,7 @@ services:
       dockerfile: microservices/discovery-server/Dockerfile
     image: telco-discovery-server:local
     container_name: telco-discovery-server
+    mem_limit: 448m
     restart: *restart
     profiles: [platform, apps]
     ports:
@@ -446,6 +483,7 @@ services:
       dockerfile: microservices/api-gateway/Dockerfile
     image: telco-api-gateway:local
     container_name: telco-api-gateway
+    mem_limit: 640m
     restart: *restart
     profiles: [platform, apps]
     depends_on:
@@ -487,6 +525,7 @@ services:
   minio:
     image: minio/minio:${MINIO_VERSION:-RELEASE.2025-04-08T15-41-24Z}
     container_name: telco-minio
+    mem_limit: 384m
     restart: *restart
     command: server /data --console-address ":9090"
     environment:
@@ -511,6 +550,7 @@ services:
   createbuckets:
     image: minio/mc:${MINIO_MC_VERSION:-RELEASE.2025-04-08T15-39-49Z}
     container_name: telco-minio-createbuckets
+    mem_limit: 128m
     restart: "no"
     depends_on:
       minio:
@@ -530,6 +570,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:${KAFKA_UI_VERSION:-latest}
     container_name: telco-kafka-ui
+    mem_limit: 384m
     restart: *restart
     profiles: [tools]
     depends_on:
@@ -549,6 +590,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.1}
     container_name: telco-keycloak
+    mem_limit: 640m
     restart: *restart
     profiles: [auth]
     command: 
@@ -588,6 +630,7 @@ services:
   keycloak-config:
     image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.1.4}
     container_name: telco-keycloak-config
+    mem_limit: 192m
     profiles: [auth]
     restart: "no"
     depends_on:
@@ -615,6 +658,7 @@ services:
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v3.0.1}
     container_name: telco-prometheus
+    mem_limit: 512m
     restart: *restart
     profiles: [observability]
     ports:
@@ -628,6 +672,7 @@ services:
   loki:
     image: grafana/loki:${LOKI_VERSION:-3.3.1}
     container_name: telco-loki
+    mem_limit: 384m
     restart: *restart
     profiles: [observability]
     command: ["-config.file=/etc/loki/loki-config.yml"]
@@ -641,6 +686,7 @@ services:
   tempo:
     image: grafana/tempo:${TEMPO_VERSION:-2.6.1}
     container_name: telco-tempo
+    mem_limit: 384m
     restart: *restart
     profiles: [observability]
     command: ["-config.file=/etc/tempo/tempo.yml"]
@@ -654,6 +700,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:-0.119.0}
     container_name: telco-otel-collector
+    mem_limit: 256m
     restart: *restart
     profiles: [observability]
     command: ["--config=/etc/otel/otel-collector-config.yaml"]
@@ -671,6 +718,7 @@ services:
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION:-11.4.0}
     container_name: telco-grafana
+    mem_limit: 384m
     restart: *restart
     profiles: [observability]
     depends_on:
@@ -702,6 +750,7 @@ services:
       dockerfile: microservices/identity-service/Dockerfile
     image: telco-identity-service:local
     container_name: telco-identity-service
+    mem_limit: 560m
     ports:
       - "${IDENTITY_SERVICE_PORT:-9001}:9001"
     healthcheck:
@@ -718,6 +767,7 @@ services:
       dockerfile: microservices/customer-service/Dockerfile
     image: telco-customer-service:local
     container_name: telco-customer-service
+    mem_limit: 560m
     ports:
       - "${CUSTOMER_SERVICE_PORT:-9002}:9002"
     healthcheck:
@@ -734,6 +784,7 @@ services:
       dockerfile: microservices/product-catalog-service/Dockerfile
     image: telco-product-catalog-service:local
     container_name: telco-product-catalog-service
+    mem_limit: 560m
     ports:
       - "${PRODUCT_CATALOG_SERVICE_PORT:-9003}:9003"
     healthcheck:
@@ -750,6 +801,7 @@ services:
       dockerfile: microservices/order-service/Dockerfile
     image: telco-order-service:local
     container_name: telco-order-service
+    mem_limit: 560m
     ports:
       - "${ORDER_SERVICE_PORT:-9004}:9004"
     healthcheck:
@@ -766,6 +818,7 @@ services:
       dockerfile: microservices/subscription-service/Dockerfile
     image: telco-subscription-service:local
     container_name: telco-subscription-service
+    mem_limit: 560m
     ports:
       - "${SUBSCRIPTION_SERVICE_PORT:-9005}:9005"
     healthcheck:
@@ -782,6 +835,7 @@ services:
       dockerfile: microservices/usage-service/Dockerfile
     image: telco-usage-service:local
     container_name: telco-usage-service
+    mem_limit: 560m
     ports:
       - "${USAGE_SERVICE_PORT:-9006}:9006"
     healthcheck:
@@ -798,6 +852,7 @@ services:
       dockerfile: microservices/billing-service/Dockerfile
     image: telco-billing-service:local
     container_name: telco-billing-service
+    mem_limit: 560m
     ports:
       - "${BILLING_SERVICE_PORT:-9007}:9007"
     healthcheck:
@@ -820,6 +875,7 @@ services:
       dockerfile: microservices/payment-service/Dockerfile
     image: telco-payment-service:local
     container_name: telco-payment-service
+    mem_limit: 560m
     ports:
       - "${PAYMENT_SERVICE_PORT:-9008}:9008"
     healthcheck:
@@ -836,6 +892,7 @@ services:
       dockerfile: microservices/notification-service/Dockerfile
     image: telco-notification-service:local
     container_name: telco-notification-service
+    mem_limit: 560m
     depends_on:
       <<: *app-depends
       mongo:
@@ -856,6 +913,7 @@ services:
       dockerfile: microservices/ticket-service/Dockerfile
     image: telco-ticket-service:local
     container_name: telco-ticket-service
+    mem_limit: 560m
     ports:
       - "${TICKET_SERVICE_PORT:-9010}:9010"
     healthcheck:
@@ -872,6 +930,7 @@ services:
       dockerfile: microservices/campaign-service/Dockerfile
     image: telco-campaign-service:local
     container_name: telco-campaign-service
+    mem_limit: 560m
     ports:
       - "${CAMPAIGN_SERVICE_PORT:-9011}:9011"
     healthcheck:
@@ -890,6 +949,7 @@ services:
       dockerfile: microservices/dispute-service/Dockerfile
     image: telco-dispute-service:local
     container_name: telco-dispute-service
+    mem_limit: 560m
     ports:
       - "${DISPUTE_SERVICE_PORT:-9012}:9012"
     healthcheck:
@@ -907,6 +967,7 @@ services:
       dockerfile: microservices/fraud-service/Dockerfile
     image: telco-fraud-service:local
     container_name: telco-fraud-service
+    mem_limit: 560m
     ports:
       - "${FRAUD_SERVICE_PORT:-9013}:9013"
     healthcheck:
@@ -931,6 +992,7 @@ services:
       dockerfile: microservices/web-bff/Dockerfile
     image: telco-web-bff:local
     container_name: telco-web-bff
+    mem_limit: 560m
     depends_on:
       config-server:
         condition: service_healthy
