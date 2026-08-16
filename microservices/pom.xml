@@ -32,7 +32,7 @@
         <rest-assured.version>5.5.0</rest-assured.version>
         <debezium.version>3.0.8.Final</debezium.version>
         <kafka-connect.version>4.2.1</kafka-connect.version>
-        <minio.version>8.5.17</minio.version>
+        <minio.version>8.6.0</minio.version>
         <openpdf.version>2.0.3</openpdf.version>
 
         <!-- Coverage gate (ADR-013, task 14.1.3, NFR-17). Per-module minimum LINE coverage.
