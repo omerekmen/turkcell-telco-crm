@@ -22,9 +22,8 @@ import static org.awaitility.Awaitility.await;
 /**
  * Sprint 22 (ADR-028) - dispute resolution's two financial-outcome paths.
  *
- * <p><b>NOT run this session - needs the full docker-compose stack (no Docker per this session's
- * constraint).</b> Written to the same standard as {@code MonthlyInvoiceAcceptanceIT}: pure
- * RestAssured against a real gateway/Keycloak, no Spring context or mocking in this module.
+ * <p>Written to the same standard as {@code MonthlyInvoiceAcceptanceIT}: pure RestAssured against a
+ * real gateway/Keycloak, no Spring context or mocking in this module.
  *
  * <p>Source of truth:
  * <ul>
