@@ -6,70 +6,79 @@
 
     <parent>
         <groupId>com.telco</groupId>
-        <artifactId>microservices</artifactId>
+        <artifactId>domain-services-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
-        <relativePath>../pom.xml</relativePath>
+        <relativePath>../domain-services-parent/pom.xml</relativePath>
     </parent>
 
     <artifactId>identity-service</artifactId>
     <name>identity-service</name>
-    <description>Identity and access management (port 9001, CQRS + Mediator). Skeleton only - no
-        business code. Mode-specific starters (mediator/outbox/inbox) and persistence are added during
-        implementation.</description>
+    <description>Identity and access management (port 9001, CQRS + Mediator). Domain projection of
+        users/roles/permissions with audit; credentials and token issuance belong to Keycloak (ADR-011).
+        Persists to PostgreSQL with Flyway and publishes domain events via the transactional outbox.</description>
+
+    <properties>
+        <!-- NFR-17 exception, tech-lead ruling 2026-07-06, target 70% by end of Sprint 15,
+             tracked in docs/tasks/sprint-14-testing-and-hardening/README.md. This is a floor
+             at the currently measured coverage (rounded down, minus a small buffer), not a new
+             target: the inherited jacoco-check gate still fails if coverage regresses below it. -->
+        <jacoco.minCoverage>0.58</jacoco.minCoverage>
+    </properties>
 
     <dependencies>
-        <!-- Mandatory platform starters (ADR-018). -->
         <dependency>
             <groupId>com.telco.platform</groupId>
-            <artifactId>starter-api</artifactId>
+            <artifactId>starter-mediator</artifactId>
+        </dependency>
+        <!-- Consumes customer.registered.v1 via the transactional inbox (ADR-005, Section 14.1.1). -->
+        <dependency>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>starter-inbox</artifactId>
+        </dependency>
+        <!-- Kafka listener for customer.registered.v1 (identity-to-customer linkage). -->
+        <dependency>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>starter-kafka</artifactId>
+        </dependency>
+
+        <!-- Per-service OpenAPI / Swagger UI (ARC-08). -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
+        <!-- RestAssured for HTTP-level integration tests. -->
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>kafka</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Canonical Avro event contracts and the shared AvroContractAssertions test-jar (feature
+             14.5 phase 6, ADR-019): IdentityEventSchemaCompatTest compares real event records against
+             the governed schema in platform-event-contracts. identity-service had no compat-test
+             infrastructure at all before this feature. -->
+        <dependency>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>platform-event-contracts</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.telco.platform</groupId>
-            <artifactId>starter-security</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.telco.platform</groupId>
-            <artifactId>starter-observability</artifactId>
-        </dependency>
-
-        <!-- Web + validation + actuator. -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-
-        <!-- Centralized config + service discovery (ADR-010). -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-config</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <artifactId>platform-event-contracts</artifactId>
+            <type>test-jar</type>
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>

@@ -1,0 +1,55 @@
+# Test profile for subscription-service integration tests. Disables all external infrastructure
+# dependencies (config-server, Eureka) so the service boots with only a Testcontainers Postgres.
+
+spring:
+  cloud:
+    config:
+      enabled: false
+    compatibility-verifier:
+      enabled: false
+  config:
+    import: ""
+  flyway:
+    locations:
+      - classpath:db/migration
+      - classpath:db/migration/platform
+  # Tests drive the payment.failed.v1 consumer directly; never start the Kafka listener container
+  # or attempt a broker connection.
+  kafka:
+    bootstrap-servers: localhost:9092
+    listener:
+      auto-startup: false
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+# HMAC secret for JwtService.issue() in tests (256-bit, base64).
+# Plain text: "my-test-secret-key-for-subscription-svc"
+telco:
+  clients:
+    # Dummy URL: tests stub OrderServiceClient (@MockitoBean), so the real RestClient is never built.
+    order:
+      url: http://localhost:0
+  platform:
+    security:
+      gateway-trust:
+        enabled: false
+      jwt:
+        secret: bXktdGVzdC1zZWNyZXQta2V5LWZvci1zdWJzY3JpcHRpb24tc3Zj
+        issuer: telco
+    # Off by default: Redisson connects eagerly at startup, unlike starter-kafka's listener
+    # containers, and would fail context refresh for every test in this module that doesn't run a
+    # Redis container. starter-lock's test-jar supplies a real in-JVM DistributedLock substitute
+    # whenever this is false. A test that exercises the reaper's real locking re-enables this
+    # explicitly and points it at a Testcontainers Redis.
+    lock:
+      enabled: false
+  subscription:
+    msisdn-reaper:
+      # Off by default: this is a production background job with no bearing on most tests, and its
+      # @Scheduled first tick fires almost immediately at context startup, which would race against
+      # whatever those tests assert about msisdn_pool state. A test that wants the bean re-enables it.
+      enabled: false

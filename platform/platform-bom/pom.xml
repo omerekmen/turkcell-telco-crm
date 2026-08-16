@@ -19,6 +19,13 @@
         <jjwt.version>0.12.6</jjwt.version>
         <avro.version>1.12.0</avro.version>
         <resilience4j.version>2.3.0</resilience4j.version>
+        <logstash-logback.version>8.0</logstash-logback.version>
+        <loki4j.version>1.5.2</loki4j.version>
+        <redisson.version>3.50.0</redisson.version>
+        <!-- Pinned to match microservices/pom.xml: Spring Boot 4.1's bundled testcontainers-bom
+             moved to Testcontainers 2.x, which renamed artifacts (junit-jupiter -> testcontainers-
+             junit-jupiter); pin the pre-rename 1.x line here so modules omit the <version> tag. -->
+        <testcontainers.version>1.20.6</testcontainers.version>
     </properties>
 
     <dependencyManagement>
@@ -51,6 +58,20 @@
                 <scope>import</scope>
             </dependency>
 
+            <!-- Structured JSON logging (ADR-012). -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback.version}</version>
+            </dependency>
+
+            <!-- Loki Logback appender for log ingestion (ADR-012). -->
+            <dependency>
+                <groupId>com.github.loki4j</groupId>
+                <artifactId>loki-logback-appender</artifactId>
+                <version>${loki4j.version}</version>
+            </dependency>
+
             <!-- JWT support (opt-in security starter) per ADR-011. -->
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
@@ -73,6 +94,26 @@
                 <groupId>org.apache.avro</groupId>
                 <artifactId>avro</artifactId>
                 <version>${avro.version}</version>
+            </dependency>
+
+            <!-- Redisson: distributed-lock client per ADR-024 (opt-in starter-lock only). -->
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson</artifactId>
+                <version>${redisson.version}</version>
+            </dependency>
+
+            <!-- Testcontainers: pinned here so platform modules omit the <version> tag (mirrors
+                 microservices/pom.xml's identical pinning). -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers</artifactId>
+                <version>${testcontainers.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${testcontainers.version}</version>
             </dependency>
 
             <!-- Internal platform modules. -->
@@ -103,8 +144,21 @@
             </dependency>
             <dependency>
                 <groupId>com.telco.platform</groupId>
+                <artifactId>platform-lock</artifactId>
+                <version>${platform.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.telco.platform</groupId>
                 <artifactId>platform-event-contracts</artifactId>
                 <version>${platform.version}</version>
+            </dependency>
+            <!-- Test-jar classifier: packages the shared AvroContractAssertions checker (feature 14.5
+                 phase 6, ADR-019) so every producing service's schema-compat test can depend on it. -->
+            <dependency>
+                <groupId>com.telco.platform</groupId>
+                <artifactId>platform-event-contracts</artifactId>
+                <version>${platform.version}</version>
+                <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>com.telco.platform</groupId>
@@ -147,6 +201,24 @@
                 <groupId>com.telco.platform</groupId>
                 <artifactId>starter-log-persistence</artifactId>
                 <version>${platform.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.telco.platform</groupId>
+                <artifactId>starter-kafka</artifactId>
+                <version>${platform.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.telco.platform</groupId>
+                <artifactId>starter-lock</artifactId>
+                <version>${platform.version}</version>
+            </dependency>
+            <!-- Test-jar classifier: shares the Testcontainers Redis harness (feature 17.2, ADR-024)
+                 so distributed-lock consumers' concurrency tests can depend on it. -->
+            <dependency>
+                <groupId>com.telco.platform</groupId>
+                <artifactId>starter-lock</artifactId>
+                <version>${platform.version}</version>
+                <type>test-jar</type>
             </dependency>
 
         </dependencies>

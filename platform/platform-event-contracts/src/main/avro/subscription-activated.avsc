@@ -31,6 +31,12 @@
         "logicalType": "timestamp-millis"
       },
       "doc": "Instant the subscription was activated, in epoch milliseconds (UTC)."
+    },
+    {
+      "name": "orderId",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Order that drove this activation (saga correlation key, UUID). Null only for non-saga/manual activation. Added LAST as a nullable union with default null to stay BACKWARD-compatible (ADR-019). The producer always populates it."
     }
   ]
 }

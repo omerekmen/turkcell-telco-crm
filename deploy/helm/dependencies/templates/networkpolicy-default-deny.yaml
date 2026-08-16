@@ -1,0 +1,259 @@
+# Feature 19.4.1 (ADR-026 Section 3). Default-deny NetworkPolicy baseline for
+# the `telco` namespace, the compensating network-layer control for pods that
+# are not (yet) meshed or bypass the Linkerd proxy - Linkerd's per-`Server`
+# AuthorizationPolicy (Feature 19.3) only governs the meshed data path, so a
+# non-injected pod (a rollout gap, a misconfigured namespace annotation) could
+# otherwise still reach another pod's application port directly in plain HTTP.
+# `security-posture.md` Section 8 names mTLS + default-deny NetworkPolicy as
+# one combined production recommendation, not two independently-schedulable
+# items (ADR-026 Section 3 keeps that pairing explicitly).
+#
+# Lives in THIS chart (deploy/helm/dependencies/), not
+# deploy/helm/telco-service/, for the same reason templates/namespace.yaml
+# does: `podSelector: {}` must select every pod in `telco` - all 13
+# telco-service releases AND this chart's own stateful backends (postgres,
+# redis, kafka, minio, keycloak, ...) - which no single telco-service release
+# can express (that chart renders one object per service release, scoped to
+# that release's own pod selector). This chart already creates the `telco`
+# namespace (templates/namespace.yaml) and is installed once, first, per
+# cluster (deploy/RUNBOOK.md Section 2), matching "namespace-wide baseline
+# before any per-service allow rule is layered on top" (19.4's Dependencies:
+# "19.4.1" is a hard prerequisite for 19.4.2/19.4.3).
+#
+# `policyTypes: [Ingress, Egress]` with no `ingress`/`egress` rule blocks are
+# what makes this default-deny in both directions (Kubernetes NetworkPolicy
+# semantics: a policyType present with zero matching rules denies all traffic
+# of that direction for the selected pods, unless another NetworkPolicy
+# selecting the same pod explicitly allows it - allow rules across multiple
+# policies are additive, per the upstream NetworkPolicy spec).
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "telco-deps.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Universal CoreDNS egress allow, co-located with the default-deny baseline
+# above rather than in either telco-service NetworkPolicy template
+# (19.4.3's suggested placement, "likely part of the 19.4.1 baseline chart,
+# since it is universal rather than per-service"): EVERY pod in `telco`,
+# including this chart's own stateful backends, needs to resolve in-cluster
+# DNS names (e.g. a Service's short name) to function at all, so this must be
+# applied in the SAME install step as the default-deny baseline - deferring
+# it to the per-service egress template (templates/networkpolicy-egress.yaml,
+# which only renders for telco-service releases, not this chart's own
+# postgres/redis/kafka/minio/keycloak pods) would leave a window where the
+# baseline denies DNS to every pod cluster-wide, including pods this chart
+# itself owns.
+#
+# CoreDNS runs in `kube-system`, labelled `k8s-app: kube-dns` by the default
+# kubeadm/Kind manifest (the same cluster this platform targets per
+# deploy/RUNBOOK.md - not independently re-verified against a live cluster
+# this session, see this feature's final report). `kubernetes.io/metadata.name`
+# is a well-known, automatically-applied namespace label (Kubernetes >=1.21,
+# stable) - used here instead of a hand-applied label so this rule needs no
+# extra cluster setup beyond what any modern cluster already provides.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "telco-deps.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Universal Linkerd control-plane egress allow (Finding C fix, 2026-07-18),
+# co-located with the DNS allow above for the same reason: it is universal, not
+# per-service. EVERY meshed pod in `telco` (all 13 telco-service releases AND
+# this chart's own backends, which are meshed too - `linkerdInject: true`) runs
+# a linkerd-proxy that MUST reach the Linkerd control plane in the `linkerd`
+# namespace to obtain and renew its mTLS identity certificate (linkerd-identity)
+# and to receive service-discovery + inbound-authorization policy
+# (linkerd-destination / linkerd-policy). Under the default-deny baseline this
+# egress is denied, so a pod scheduled after default-deny is applied gets stuck
+# at `Init` - its proxy never becomes ready (live-verified 2026-07-18: a fresh
+# customer-service pod hung at Init:1/2 until this rule was added). This must be
+# in the SAME install step as the baseline, and namespace-wide, since the
+# per-service telco-service egress template does not (and should not) know about
+# the control-plane namespace. Scoped to the `linkerd` namespace, which contains
+# only the control plane.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-linkerd-control-plane-egress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "telco-deps.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: linkerd
+---
+# Backend ingress allow (Finding C fix, 2026-07-18). The stateful dependency
+# backends (postgres/redis/mongo/kafka/schema-registry/kafka-connect/minio/
+# keycloak) are meshed (`linkerdInject: true`) and are selected by the
+# default-deny baseline for Ingress, so under default-deny they receive NO
+# traffic and every client's DB/cache/broker connection fails - live-verified:
+# a fresh customer-service pod crashed at Flyway with a postgres "connection
+# reset" until this rule was added, then started clean. Their clients are
+# meshed telco-service pods, which - exactly like the service-to-service case
+# (see the telco-service egress template's Finding C note) - reach a meshed
+# backend on its linkerd-proxy INBOUND port 4143, NOT the backend's app port.
+# This rule restores that: ingress to each backend on 4143 from any telco-crm
+# pod. The backends carry no mesh AuthorizationPolicy (only telco-service
+# releases get a Server/AuthorizationPolicy), so this coarse pod-to-pod allow is
+# the network-layer control for reaching them; the per-service egress list
+# (`networkPolicy.egress.*`) still bounds which backends each service may reach.
+# Namespace-wide + co-located with the baseline for the same reason as the DNS
+# and control-plane rules above (universal, and the per-service telco-service
+# template does not own the dependency backends).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-ingress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "telco-deps.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - postgres
+          - redis
+          - mongo
+          - kafka
+          - schema-registry
+          - kafka-connect
+          - minio
+          - keycloak
+          # Observability backends (full-deploy completeness, 2026-07-19). These
+          # are meshed dependency pods too (`linkerdInject: true`) and receive
+          # traffic from meshed clients on 4143: services push OTLP traces to
+          # otel-collector and logs to loki; otel-collector forwards to tempo and
+          # loki; grafana queries prometheus/loki/tempo; prometheus scrapes
+          # otel-collector. Without an ingress allow they are default-denied and
+          # the observability stack silently receives nothing under full
+          # default-deny. (Prometheus scraping the telco-SERVICE pods is the
+          # inverse edge - metrics ingress on each service - and is the one
+          # remaining follow-up noted in the sprint README, not covered here.)
+          - otel-collector
+          - loki
+          - tempo
+          - prometheus
+          - grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: telco-crm
+      ports:
+        - protocol: TCP
+          port: 4143
+---
+# Backend-to-backend egress allow (full-deploy completeness, 2026-07-19). The
+# mirror of `allow-backend-ingress` above, for the EGRESS half of the edges where
+# one dependency backend calls another - which the per-service telco-service
+# egress template does not (and should not) cover, since these are not
+# telco-service releases. Under the default-deny baseline a backend pod's egress
+# is denied except DNS and the linkerd control plane, so every backend->backend
+# call fails until this rule restores it. Concrete edges this covers, each read
+# from the real dependency config rather than assumed:
+#   - keycloak      -> postgres        (KC_DB_URL jdbc:postgresql://postgres,
+#                                        deploy/helm/dependencies/templates/keycloak.yaml)
+#   - kafka-connect -> kafka, postgres (BOOTSTRAP_SERVERS kafka:9092 + Debezium
+#                                        logical-replication source on postgres)
+#   - schema-registry -> kafka         (SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS)
+#   - otel-collector  -> tempo, loki   (exporters otlp/tempo tempo:4317,
+#                                        otlphttp/loki http://loki:3100/otlp)
+#   - grafana         -> prometheus, loki, tempo (datasources.yml)
+#   - prometheus      -> otel-collector (scrape job otel-collector:8889)
+# The source podSelector is bounded to the backend components only (not the whole
+# telco-crm tier), so this does NOT widen the least-privilege egress the
+# telco-service releases have. Destination is the same meshed backend set on 4143
+# (the ingress half is the rule above). This keeps backend<->backend a single
+# coarse infra allow rather than a per-source matrix - acceptable at the infra
+# tier, whereas the service tier keeps per-service least privilege.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "telco-deps.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - postgres
+          - redis
+          - mongo
+          - kafka
+          - schema-registry
+          - kafka-connect
+          - minio
+          - keycloak
+          - otel-collector
+          - loki
+          - tempo
+          - prometheus
+          - grafana
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - postgres
+                  - redis
+                  - mongo
+                  - kafka
+                  - schema-registry
+                  - kafka-connect
+                  - minio
+                  - keycloak
+                  - otel-collector
+                  - loki
+                  - tempo
+                  - prometheus
+                  - grafana
+      ports:
+        - protocol: TCP
+          port: 4143
+{{- end }}

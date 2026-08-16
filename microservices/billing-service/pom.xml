@@ -6,63 +6,100 @@
 
     <parent>
         <groupId>com.telco</groupId>
-        <artifactId>microservices</artifactId>
+        <artifactId>domain-services-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
-        <relativePath>../pom.xml</relativePath>
+        <relativePath>../domain-services-parent/pom.xml</relativePath>
     </parent>
 
     <artifactId>billing-service</artifactId>
     <name>billing-service</name>
-    <description>Invoice generation and monthly bill-run (port 9007, Domain Orchestration). Skeleton
-        only - no business code.</description>
+    <description>Invoice generation, monthly bill-run, PDF rendering, and payment reconciliation
+        (port 9007, Domain Orchestration). Implements features 11.1-11.6: AC-02.</description>
+
+    <!-- The NFR-17 jacoco.minCoverage=0.56 exception (tech-lead ruling 2026-07-06) is closed: the
+         14.3.2 saga/orchestration coverage pass added unit tests for the previously-untested
+         Kafka consumers, storage adapter (incl. circuit-breaker fallbacks), PDF renderer, query
+         handlers, and subscription-lifecycle command handlers, raising LINE coverage from 57.8% to
+         90.6% (mvn -f microservices/pom.xml -pl billing-service -am test jacoco:report). billing-
+         service now falls back to the inherited default 70% gate like every other non-excepted
+         service - see docs/tasks/sprint-14-testing-and-hardening/README.md and
+         14.3-bill-run-throughput-and-coverage-report.md for the full before/after breakdown. -->
 
     <dependencies>
+        <!-- Per-service OpenAPI / Swagger UI (ARC-08). -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>com.telco.platform</groupId>
-            <artifactId>starter-api</artifactId>
+            <artifactId>starter-mediator</artifactId>
         </dependency>
+        <!-- Consumes subscription/usage/payment events via the transactional inbox. -->
         <dependency>
             <groupId>com.telco.platform</groupId>
-            <artifactId>starter-security</artifactId>
+            <artifactId>starter-inbox</artifactId>
         </dependency>
+        <!-- Kafka listeners for billing event consumers. -->
         <dependency>
             <groupId>com.telco.platform</groupId>
-            <artifactId>starter-observability</artifactId>
+            <artifactId>starter-kafka</artifactId>
         </dependency>
+        <!-- Guards the bill-run's run-level, period-scoped coordination across replicas (feature 17.4, ADR-024). -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>starter-lock</artifactId>
         </dependency>
+
+        <!-- Avro event contracts (subscription, usage, payment, invoice events). -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>platform-event-contracts</artifactId>
         </dependency>
+        <!-- Shared AvroContractAssertions test-jar (feature 14.5 phase 6, ADR-019):
+             BillingEventSchemaCompatTest compares real event records against the governed schema. -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>platform-event-contracts</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
         </dependency>
+
+        <!-- PDF rendering: OpenPDF (MIT-licensed iText fork). -->
         <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-config</artifactId>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
         </dependency>
+
+        <!-- MinIO SDK for invoice PDF object storage. -->
         <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
         </dependency>
+
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Real Kafka broker for DisputeConsumersIntegrationTest (Sprint 22 Feature 22.6.3) -
+             proves the three dispute inbox consumers against a real dispute.events round trip. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>kafka</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Shared Testcontainers Redis harness (feature 17.2.1), reused by the bill-run's
+             multi-instance concurrency test (feature 17.4.2) instead of duplicating setup. -->
+        <dependency>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>starter-lock</artifactId>
+            <type>test-jar</type>
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>

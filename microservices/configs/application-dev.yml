@@ -1,5 +1,35 @@
 # Shared dev overrides applied to ALL services when SPRING_PROFILES_ACTIVE=dev.
 
+# Local host-facing ports for infrastructure running in Docker.
+# Kafka KRaft: host listener is 29092 (internal cluster port 9092 is Docker-only).
+# Keycloak:    host port 8085 maps to container 8080.
+KAFKA_BOOTSTRAP_SERVERS: "localhost:29092"
+KAFKA_BROKERS: "localhost:29092"
+KEYCLOAK_JWKS_URI: "http://localhost:8085/realms/telco-crm/protocol/openid-connect/certs"
+
+# Platform security: validate Keycloak RS256 tokens directly.
+# Public key matches the fixed "rsa-fixed" key provider baked into
+# infra/docker/keycloak/realm/realm-export.json (org.keycloak.keys.KeyProvider), so it is stable
+# across fresh imports - unlike a Keycloak-generated key, it does not depend on the postgres
+# volume surviving between runs, which is required for CI (fresh containers every run) and for
+# `make infra-destroy` locally. If the realm export's key ever changes, update this to match.
+# Issuer must match the `iss` claim in tokens issued via http://localhost:8085.
+telco:
+  platform:
+    security:
+      jwt:
+        issuer: "http://localhost:8085/realms/telco-crm"
+        public-key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1OxHnzVRqFXcFhwW+3hs
+          KIBY0Tv8YtHsLnLHCc5zBbMNs/xqIJRDopThdB2c7Whr6uUaxPNFYNhne1tO+DMt
+          rvkHwAl478vo4AIU7mX1hHnWyQWxo0S6DtaWCvhIE96MXxCRWW5SDlbkf78JrOuE
+          IWe/kYW/Eq08INN5mctA3FEIMm4cTaQ24xaK0rHi3Gglh/0KoeqgcI9FQAx03Oui
+          ZyaE4VYTMcJal7piRx3jOlrU67dVSkK57xL05CODJpGSj/t5jikclAqXeKVYG6Qc
+          IJGR5xVD4VJQPZA6CY3yB7W3NVcdAE46N5AM1/E66/lQ6cx6kNnlRUGO/oIk0E19
+          DwIDAQAB
+          -----END PUBLIC KEY-----
+
 logging:
   level:
     root: INFO
@@ -9,12 +39,25 @@ management:
   tracing:
     sampling:
       probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
 
+# Kafka span propagation in dev (ADR-012).
 spring:
+  kafka:
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
   jpa:
     show-sql: false
     hibernate:
       ddl-auto: validate
+
+# Loki push URL consumed by <springProperty> in logback-spring.xml (ADR-012).
+loki:
+  url: http://localhost:3100/loki/api/v1/push
 
 eureka:
   instance:

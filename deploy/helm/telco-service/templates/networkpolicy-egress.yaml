@@ -1,0 +1,207 @@
+# Feature 19.4.3 (ADR-026 Section 3). Explicit NetworkPolicy egress allow
+# rules restoring each service's own infra dependencies on top of the 19.4.1
+# default-deny baseline, plus the universal config-server/discovery-server
+# egress (the mirror, from the caller's side, of 19.4.2's ingress rule).
+# Rendered once per telco-service release, selecting this release's own pods
+# the same way templates/networkpolicy-ingress.yaml does. The universal
+# CoreDNS egress allow is NOT here - it is namespace-wide and lives in
+# deploy/helm/dependencies/templates/networkpolicy-default-deny.yaml (see
+# that file's header comment for why).
+#
+# Per-dependency flags (`.Values.networkPolicy.egress.*`) are derived
+# strictly from docs/architecture/service-catalog.md Section 5's
+# Infrastructure Profile table plus docs/architecture/event-catalog.md's
+# producer/consumer roster (for `kafka`) - set true per service in
+# deploy/helm/values/<service>.yaml, false here by default (chart default
+# declares no infra dependency). Two DEVIATIONS from a literal reading of
+# Section 5 alone, both verified by reading the actual shipped
+# `microservices/configs/<service>/application.yml` rather than assumed: (1)
+# `subscription-service` and `billing-service` also get `redis: true` even
+# though Section 5's Cache column does not list Redis for them - both use
+# Redisson-backed Redis for a cross-replica distributed lock (ADR-024, MSISDN
+# reservation-expiry reaper / invoice generation), a real egress dependency
+# Section 5's cache-only framing does not capture; (2) `usage-service` and
+# `payment-service`'s Redis egress is granted per Section 5's designed Cache
+# column even though their `application.yml`/`application-k8s.yml` do not yet
+# wire a `REDIS_HOST` in the dev/k8s profile (only prod/staging do) - granting
+# the allow rule now avoids a second NetworkPolicy change when that wiring
+# gap is closed, and an unused allow rule is not a security regression the
+# way a missing one would be.
+#
+# `keycloak: true` is set for every domain service (not just api-gateway/
+# identity-service) because each one is its own Spring Security OAuth2
+# resource server, independently validating inbound JWT signatures via a
+# directly-fetched JWKS - confirmed live by reading
+# `microservices/configs/<service>/application-docker.yml`'s
+# `spring.security.oauth2.resourceserver.jwt.jwks-uri: http://keycloak:8080/...`,
+# present in every domain service's config, not only api-gateway's. This is
+# additional to, not a replacement for, the gateway's own JWT validation and
+# `X-User-Id`/`X-User-Roles` injection (ADR-011) - the two layers are
+# independent and this NetworkPolicy grant does not change either.
+#
+# Destination pods below are selected by `app.kubernetes.io/name`, mirroring
+# deploy/helm/dependencies/templates/*.yaml's `telco-deps.selectorLabels`.
+# The destination PORT is uniformly 4143 (the linkerd-proxy inbound port) - see
+# the `# PORTS - Finding C fix` note on the `egress:` block below for why the
+# app ports (5432/6379/8080/...) are NOT used for these meshed destinations.
+#
+# Service-to-service egress (`.Values.networkPolicy.egress.services`, Finding B
+# fix 2026-07-18): the egress-side mirror of networkpolicy-ingress.yaml. The
+# infra rules above cover a service reaching its OWN datastores; this block
+# covers a service reaching OTHER telco-service releases (api-gateway -> the 10
+# domain services it routes to per microservices/configs/api-gateway/
+# application.yml; the documented domain -> domain callers per the 19.3 caller
+# audit + the Sprint-21 order -> campaign edge). Live verification 2026-07-18
+# proved this was MISSING: under the 19.4.1 default-deny baseline the caller's
+# own egress was denied to the callee (api-gateway -> customer-service returned
+# 504) even though customer-service's ingress rule admitted api-gateway - a
+# NetworkPolicy needs BOTH the caller's egress and the callee's ingress to
+# allow. (Finding C then established the correct port for both halves is 4143.)
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "telco-service.fullname" . }}-egress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "telco-service.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "telco-service.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  # PORTS - Finding C fix (2026-07-18): every destination below is a MESHED pod
+  # (the domain/infra services carry a linkerd-proxy; the dependencies chart sets
+  # `linkerdInject: true`), so this service's own linkerd-proxy delivers the
+  # traffic to the DESTINATION's linkerd-proxy INBOUND port 4143 - NOT the
+  # destination's application port. Every egress rule therefore targets 4143;
+  # the destination pod's own inbound iptables + AuthorizationPolicy then handle
+  # the app port and identity. The per-dependency `.Values.networkPolicy.egress.*`
+  # flags and the `egress.services` list still control WHICH destination pods
+  # this service may reach (least privilege by destination); only the port is
+  # uniform. DNS (CoreDNS, un-meshed, kube-system) is the sole app-port egress
+  # and lives in deploy/helm/dependencies/templates/networkpolicy-default-deny.yaml.
+  # (Live-verified 2026-07-18: an app-port egress rule silently blocks meshed
+  # traffic; 4143 restores it.)
+  egress:
+    {{- if .Values.networkPolicy.egress.postgres }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    {{- if .Values.networkPolicy.egress.redis }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    {{- if .Values.networkPolicy.egress.kafka }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: schema-registry
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    {{- if .Values.networkPolicy.egress.minio }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    {{- if .Values.networkPolicy.egress.mongo }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mongo
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    {{- if .Values.networkPolicy.egress.keycloak }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keycloak
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    # Universal egress to discovery-server: every telco-service release
+    # except discovery-server itself either registers with or queries Eureka
+    # (config-server also registers - it is a Eureka client, see its
+    # `EUREKA_HOST` config in deploy/helm/values/config-server.yaml).
+    {{- if ne .Values.serviceName "discovery-server" }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: discovery-server
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    # Universal egress to config-server: every telco-service release except
+    # config-server (cannot import from itself, ADR-010) and discovery-server
+    # (comes up independently of config-server per
+    # deploy/helm/values/discovery-server.yaml's header comment) fetches its
+    # Spring Cloud Config bootstrap from it on startup.
+    {{- if and (ne .Values.serviceName "config-server") (ne .Values.serviceName "discovery-server") }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: config-server
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    # Observability egress (Feature 19.4.3 full-deploy completeness, 2026-07-19).
+    # Universal for every telco-service release (see values.yaml's
+    # `egress.observability` comment): OTLP traces -> otel-collector and log push
+    # -> loki. Both are meshed dependency backends (the dependencies chart sets
+    # `linkerdInject: true`), so - exactly like every other meshed destination in
+    # this file - the caller's linkerd-proxy delivers to the backend's proxy
+    # INBOUND port 4143, not otel-collector:4318 / loki:3100. The matching
+    # backend-side ingress allow (otel-collector/loki on 4143) lives in
+    # deploy/helm/dependencies/templates/networkpolicy-default-deny.yaml's
+    # `allow-backend-ingress` rule (extended to the observability backends in the
+    # same completeness pass). Prometheus SCRAPES services (metrics ingress on
+    # each service, not egress) and is a separate follow-up - see that file.
+    {{- if .Values.networkPolicy.egress.observability }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: loki
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+    # Service-to-service egress (Finding B fix). One rule per callee telco-service
+    # release; port 4143 per the Finding C note above (meshed destination).
+    {{- range .Values.networkPolicy.egress.services }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ . }}
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+{{- end }}

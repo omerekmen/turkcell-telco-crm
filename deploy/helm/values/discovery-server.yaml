@@ -1,0 +1,89 @@
+# discovery-server / Eureka (port 8761). Comes up independently of config-server
+# (keeps its own local config, ADR-010), so it needs no config-server bootstrap
+# env - only the Eureka basic-auth credentials. Its /actuator/health is reachable
+# without auth (the compose healthcheck curls it unauthenticated). It exposes only
+# health,info, so probes target /actuator/health rather than the liveness/readiness
+# sub-groups.
+serviceName: discovery-server
+containerPort: 8761
+service:
+  port: 8761
+
+image:
+  tag: latest
+
+probes:
+  startup:
+    path: /actuator/health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+  liveness:
+    path: /actuator/health
+    initialDelaySeconds: 0
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readiness:
+    path: /actuator/health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+config:
+  EUREKA_USERNAME: eureka
+
+secrets:
+  EUREKA_PASSWORD: eureka
+
+# Singleton Eureka registry: do not autoscale, and no PDB (single replica would
+# otherwise block node drains). Overrides the chart defaults (15.3).
+replicaCount: 1
+autoscaling:
+  enabled: false
+pdb:
+  enabled: false
+
+# Feature 19.3.2 (ADR-026 Section 2). discovery-server's real caller set is
+# all 16 services (every Eureka-client-enabled service registers with/queries
+# it), not the gateway alone - overrides the chart default's `[api-gateway]`
+# with the full roster. See config-server.yaml's identical override for the
+# same rationale.
+# Feature 19.4.2/19.4.3 (ADR-026 Section 3). Ingress: chart default already
+# reuses `authorizedClients` below (all 16 service names), no override needed.
+# Egress: discovery-server calls no Postgres/Redis/Kafka/MinIO/Keycloak, and
+# (per the header comment above) not even config-server - it is standalone.
+# templates/networkpolicy-egress.yaml's universal rules correctly render
+# neither the discovery-server-egress nor the config-server-egress block for
+# this release (both guards exclude `discovery-server` by name).
+meshPolicy:
+  authorizedClients:
+    - api-gateway
+    - discovery-server
+    - config-server
+    - identity-service
+    - customer-service
+    - product-catalog-service
+    - order-service
+    - subscription-service
+    - usage-service
+    - billing-service
+    - payment-service
+    - notification-service
+    - ticket-service
+    - campaign-service
+    - dispute-service
+    - fraud-service
+
+# Vault-backed secret sync (18.3.2, ADR-025 Section 1). Only consulted when
+# vault.enabled=true (deploy/helm/telco-service/values.yaml default: false,
+# local/dev unaffected). roleName defaults to serviceName above, matching the
+# auth/kubernetes/role/discovery-server role written by
+# deploy/helm/vault/bootstrap-k8s-auth.sh (18.2.3).
+vault:
+  secretKeys:
+    - key: EUREKA_PASSWORD
+      path: discovery-server/app
+      field: EUREKA_PASSWORD
