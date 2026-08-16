@@ -1,0 +1,39 @@
+# Test-only bootstrap for the api-gateway context. Shadows the main application.yml so the
+# integration test boots without config-server, Eureka, or a live Keycloak. The JWKS decoder bean
+# is created with a dummy URI but never invoked (tokens are supplied via spring-security-test).
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    compatibility-verifier:
+      enabled: false
+    config:
+      enabled: false
+    # Mirror the production internal-deny-route so the test can prove /internal/** is blocked at
+    # the edge (forwarded to the local 404 sink, never proxied downstream). The full route set is
+    # served by config-server in production; here we only need the deny route under test.
+    gateway:
+      server:
+        webmvc:
+          routes:
+            - id: internal-deny-route
+              uri: forward:/__gateway_blocked
+              predicates:
+                - Path=/internal/**
+              filters:
+                - SetStatus=404
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwks-uri: http://localhost:0/realms/telco-crm/protocol/openid-connect/certs
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false

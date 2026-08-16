@@ -1,0 +1,57 @@
+spring:
+  cloud:
+    config:
+      enabled: false
+    compatibility-verifier:
+      enabled: false
+  config:
+    import: ""
+  flyway:
+    locations:
+      - classpath:db/migration
+      - classpath:db/migration/platform
+  kafka:
+    bootstrap-servers: localhost:19999
+    listener:
+      auto-startup: false
+    consumer:
+      group-id: billing-test
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket:
+    invoice-pdfs: invoice-pdfs
+
+telco:
+  clients:
+    product-catalog-service:
+      url: http://localhost:9003
+  platform:
+    security:
+      gateway-trust:
+        enabled: false
+      jwt:
+        secret: YmlsbGluZy10ZXN0LXNlY3JldC1rZXktZm9yLXRlc3RpbmctMjAyNg==
+        issuer: telco
+    outbox:
+      enabled: true
+    inbox:
+      enabled: true
+    # Off by default: Redisson connects eagerly at startup, unlike starter-kafka's listener
+    # containers, and would fail context refresh for every test in this module that doesn't run a
+    # Redis container. starter-lock's test-jar supplies a real in-JVM DistributedLock substitute
+    # whenever this is false. A test that exercises the bill-run's real locking re-enables this
+    # explicitly and points it at a Testcontainers Redis.
+    lock:
+      enabled: false

@@ -63,6 +63,12 @@ public class GatewaySecurityConfig {
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
+                // /internal/** is a service-to-service-only surface (ADR-011) that the gateway
+                // never proxies downstream - the internal-deny-route forwards it to a local 404
+                // sink (GatewayRouteConfig#internalDenyRouterFunction, /__gateway_blocked).
+                // PermitAll so the deny returns a clean 404 (path absent at the edge) rather than a
+                // misleading 401; the request still never reaches any downstream /internal endpoint.
+                .requestMatchers("/internal/**", "/__gateway_blocked").permitAll()
                 // Keycloak OIDC endpoints proxied through the gateway.
                 .requestMatchers("/realms/**").permitAll()
                 // Actuator (liveness/readiness probes and info); no auth needed.
@@ -107,7 +113,10 @@ public class GatewaySecurityConfig {
         // Explicit allowlist is mandatory; configure CORS_ALLOWED_ORIGINS in production.
         config.setAllowedOrigins(corsAllowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Correlation-Id"));
+        // Idempotency-Key is a non-safelisted request header the web channel sends on POST writes
+        // (order + payment); it must be allowlisted or the cross-origin preflight blocks those flows.
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Correlation-Id",
+                "Idempotency-Key"));
         config.setExposedHeaders(List.of("X-Correlation-Id"));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

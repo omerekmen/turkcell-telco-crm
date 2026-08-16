@@ -1,0 +1,148 @@
+{{- $fullname := include "telco-service.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "telco-service.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "telco-service.selectorLabels" . | nindent 6 }}
+  strategy:
+    # Rolling deploy preserves availability during upgrades (NFR-04).
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "telco-service.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Roll the pods whenever the projected config/secret changes. When
+        # vault.enabled, secret.yaml renders nothing (static, 0 bytes) so this
+        # checksum stays constant across Vault-side rotations - the CSI
+        # volume mount below is what re-triggers the sync, on every pod
+        # (re)start, independent of this annotation (18.3.3).
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      # Disabled for the same reason as deploy/helm/dependencies/templates/schema-registry.yaml
+      # (fix from #20): Kubernetes auto-injects a SERVICE_HOST/SERVICE_PORT-shaped env var for
+      # every Service visible to the pod's namespace (enableServiceLinks defaults to true), e.g.
+      # REDIS_PORT=tcp://10.96.x.x:6379 for a Service named "redis". That collides with this
+      # platform's own REDIS_PORT=6379 (plain int) convention baked into config-server's
+      # per-service application.yml, and Spring Boot's relaxed binding picks whichever env var
+      # wins non-deterministically - when the K8s-injected one wins, numeric properties like
+      # spring.data.redis.port fail to bind ("tcp://10.96.x.x:6379" is not an int). Live-verified
+      # (19.2.1 in-cluster deploy): api-gateway crash-looped with exactly this NumberFormatException
+      # until this was set. None of the 13 services need Kubernetes service-link env vars (service
+      # discovery is via Eureka/DNS, not env vars), so this is off for all of them, not per-service.
+      enableServiceLinks: false
+      serviceAccountName: {{ include "telco-service.serviceAccountName" . }}
+      {{- if .Values.vault.enabled }}
+      volumes:
+        # CSI-mounted, read-only: mounting this on pod start is what triggers
+        # the Secrets Store CSI Driver's secretObjects sync (18.3.2's
+        # SecretProviderClass) into the <service>-secret Kubernetes Secret
+        # consumed unchanged below via envFrom.secretRef (18.3.3, ADR-025
+        # Section 1's zero-blast-radius claim).
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "telco-service.fullname" . }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        # A NUMERIC runAsUser is required: with only runAsNonRoot=true the kubelet
+        # rejects an image whose USER is a non-numeric name ("app"), because it
+        # cannot verify a username is non-root at admission. Pinned numerically here
+        # (and matched by the image's numeric USER) so both are self-consistent.
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser | default 10001 }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup | default 10001 }}
+        fsGroup: {{ .Values.securityContext.fsGroup | default 10001 }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ .Values.serviceName }}
+          image: {{ include "telco-service.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          envFrom:
+            {{- if .Values.config }}
+            - configMapRef:
+                name: {{ include "telco-service.configMapName" . }}
+            {{- end }}
+            {{- if .Values.secrets }}
+            - secretRef:
+                name: {{ include "telco-service.secretName" . }}
+            {{- end }}
+          {{- if .Values.vault.enabled }}
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.startup.path }}
+              port: http
+              {{- with .Values.probes.httpHeaders }}
+              httpHeaders:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+              {{- with .Values.probes.httpHeaders }}
+              httpHeaders:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+              {{- with .Values.probes.httpHeaders }}
+              httpHeaders:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

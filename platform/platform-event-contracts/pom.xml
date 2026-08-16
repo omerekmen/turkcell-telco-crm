@@ -32,6 +32,15 @@
             <groupId>org.apache.avro</groupId>
             <artifactId>avro</artifactId>
         </dependency>
+
+        <!-- Test-only: backs the shared AvroContractAssertions helper (feature 14.5 phase 6), packaged
+             as this module's test-jar so every producing service's compat test can depend on it
+             (ADR-018/ADR-019: reuse before build, one governed contract-checking tool, not eight). -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <pluginRepositories>
@@ -65,6 +74,22 @@
                 </executions>
             </plugin>
             <plugin>
+                <!-- Packages src/test/java (AvroContractAssertions, the shared 14.5-phase-6 schema/
+                     Java-payload contract checker) as a test-jar artifact so every producing service
+                     can add it as a test-scope dependency without duplicating the tool. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>test-jar</id>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>io.confluent</groupId>
                 <artifactId>kafka-schema-registry-maven-plugin</artifactId>
                 <version>${confluent-schema-registry-plugin.version}</version>
@@ -74,12 +99,55 @@
                     </schemaRegistryUrls>
                     <skip>${schema.registry.skip}</skip>
                     <subjects>
-                        <event.envelope.v1>${project.basedir}/src/main/avro/EventEnvelope.avsc</event.envelope.v1>
+                        <event.envelope.v1>${project.basedir}/src/main/avro/event-envelope.avsc</event.envelope.v1>
                         <customer.registered.v1>${project.basedir}/src/main/avro/customer-registered.avsc</customer.registered.v1>
+                        <customer.updated.v1>${project.basedir}/src/main/avro/customer-updated.avsc</customer.updated.v1>
+                        <customer.kyc-approved.v1>${project.basedir}/src/main/avro/customer-kyc-approved.avsc</customer.kyc-approved.v1>
+                        <customer.kyc-rejected.v1>${project.basedir}/src/main/avro/customer-kyc-rejected.avsc</customer.kyc-rejected.v1>
                         <order.created.v1>${project.basedir}/src/main/avro/order-created.avsc</order.created.v1>
                         <payment.completed.v1>${project.basedir}/src/main/avro/payment-completed.avsc</payment.completed.v1>
+                        <msisdn.allocated.v1>${project.basedir}/src/main/avro/msisdn-allocated.avsc</msisdn.allocated.v1>
+                        <msisdn.released.v1>${project.basedir}/src/main/avro/msisdn-released.avsc</msisdn.released.v1>
                         <subscription.activated.v1>${project.basedir}/src/main/avro/subscription-activated.avsc</subscription.activated.v1>
+                        <subscription.suspended.v1>${project.basedir}/src/main/avro/subscription-suspended.avsc</subscription.suspended.v1>
+                        <subscription.terminated.v1>${project.basedir}/src/main/avro/subscription-terminated.avsc</subscription.terminated.v1>
+                        <subscription.activation-failed.v1>${project.basedir}/src/main/avro/subscription-activation-failed.avsc</subscription.activation-failed.v1>
+                        <subscription.tariff-changed.v1>${project.basedir}/src/main/avro/subscription-tariff-changed.avsc</subscription.tariff-changed.v1>
+                        <subscription.addon-attached.v1>${project.basedir}/src/main/avro/subscription-addon-attached.avsc</subscription.addon-attached.v1>
                         <invoice.generated.v1>${project.basedir}/src/main/avro/invoice-generated.avsc</invoice.generated.v1>
+                        <cdr.recorded.v1>${project.basedir}/src/main/avro/cdr-recorded.avsc</cdr.recorded.v1>
+                        <usage.recorded.v1>${project.basedir}/src/main/avro/usage-recorded.avsc</usage.recorded.v1>
+                        <quota.threshold-reached.v1>${project.basedir}/src/main/avro/quota-threshold-reached.avsc</quota.threshold-reached.v1>
+                        <quota.exceeded.v1>${project.basedir}/src/main/avro/quota-exceeded.avsc</quota.exceeded.v1>
+                        <usage.aggregated.v1>${project.basedir}/src/main/avro/usage-aggregated.avsc</usage.aggregated.v1>
+                        <order.cancelled.v1>${project.basedir}/src/main/avro/order-cancelled.avsc</order.cancelled.v1>
+                        <payment.failed.v1>${project.basedir}/src/main/avro/payment-failed.avsc</payment.failed.v1>
+                        <payment.refunded.v1>${project.basedir}/src/main/avro/payment-refunded.avsc</payment.refunded.v1>
+                        <invoice.paid.v1>${project.basedir}/src/main/avro/invoice-paid.avsc</invoice.paid.v1>
+                        <invoice.overdue.v1>${project.basedir}/src/main/avro/invoice-overdue.avsc</invoice.overdue.v1>
+                        <notification.dispatched.v1>${project.basedir}/src/main/avro/notification-dispatched.avsc</notification.dispatched.v1>
+                        <ticket.opened.v1>${project.basedir}/src/main/avro/ticket-opened.avsc</ticket.opened.v1>
+                        <ticket.assigned.v1>${project.basedir}/src/main/avro/ticket-assigned.avsc</ticket.assigned.v1>
+                        <ticket.resolved.v1>${project.basedir}/src/main/avro/ticket-resolved.avsc</ticket.resolved.v1>
+                        <ticket.sla-breached.v1>${project.basedir}/src/main/avro/ticket-sla-breached.avsc</ticket.sla-breached.v1>
+                        <tariff.created.v1>${project.basedir}/src/main/avro/tariff-created.avsc</tariff.created.v1>
+                        <tariff.price-changed.v1>${project.basedir}/src/main/avro/tariff-price-changed.avsc</tariff.price-changed.v1>
+                        <user.created.v1>${project.basedir}/src/main/avro/user-created.avsc</user.created.v1>
+                        <user.deleted.v1>${project.basedir}/src/main/avro/user-deleted.avsc</user.deleted.v1>
+                        <campaign.created.v1>${project.basedir}/src/main/avro/campaign-created.avsc</campaign.created.v1>
+                        <campaign.activated.v1>${project.basedir}/src/main/avro/campaign-activated.avsc</campaign.activated.v1>
+                        <campaign.paused.v1>${project.basedir}/src/main/avro/campaign-paused.avsc</campaign.paused.v1>
+                        <campaign.expired.v1>${project.basedir}/src/main/avro/campaign-expired.avsc</campaign.expired.v1>
+                        <campaign.cancelled.v1>${project.basedir}/src/main/avro/campaign-cancelled.avsc</campaign.cancelled.v1>
+                        <dispute.opened.v1>${project.basedir}/src/main/avro/dispute-opened.avsc</dispute.opened.v1>
+                        <dispute.evidence-submitted.v1>${project.basedir}/src/main/avro/dispute-evidence-submitted.avsc</dispute.evidence-submitted.v1>
+                        <dispute.resolved-customer.v1>${project.basedir}/src/main/avro/dispute-resolved-customer.avsc</dispute.resolved-customer.v1>
+                        <dispute.resolved-merchant.v1>${project.basedir}/src/main/avro/dispute-resolved-merchant.avsc</dispute.resolved-merchant.v1>
+                        <dispute.withdrawn.v1>${project.basedir}/src/main/avro/dispute-withdrawn.avsc</dispute.withdrawn.v1>
+                        <dispute.closed.v1>${project.basedir}/src/main/avro/dispute-closed.avsc</dispute.closed.v1>
+                        <fraud.signal-raised.v1>${project.basedir}/src/main/avro/fraud-signal-raised.avsc</fraud.signal-raised.v1>
+                        <fraud.case-opened.v1>${project.basedir}/src/main/avro/fraud-case-opened.avsc</fraud.case-opened.v1>
+                        <fraud.case-resolved.v1>${project.basedir}/src/main/avro/fraud-case-resolved.avsc</fraud.case-resolved.v1>
                     </subjects>
                     <schemaType>AVRO</schemaType>
                     <compatibilityLevel>BACKWARD</compatibilityLevel>

@@ -1,0 +1,89 @@
+# Feature 19.4.2 (ADR-026 Section 3). Explicit NetworkPolicy ingress allow
+# rules restoring the real service-catalog call graph on top of the 19.4.1
+# default-deny baseline (deploy/helm/dependencies/templates/
+# networkpolicy-default-deny.yaml). Rendered once per telco-service release
+# (mirrors templates/server.yaml's "one object per service" pattern), and
+# selects this release's own pods the same way templates/server.yaml does
+# (`telco-service.selectorLabels` on the app port, named "http" -
+# templates/deployment.yaml).
+#
+# Source list: by default (`.Values.networkPolicy.useAuthorizedClientsForIngress`,
+# true unless overridden) this reuses `.Values.meshPolicy.authorizedClients`
+# verbatim - the SAME real caller set 19.3's Linkerd AuthorizationPolicy
+# already allows (see values.yaml's `meshPolicy` comment for the full roster:
+# api-gateway for most domain services; all 13 service names for
+# config-server/discovery-server; the three documented non-gateway callers for
+# customer-service, order-service, product-catalog-service). Deliberately NOT
+# a second, independently-maintained list - one source of truth for "who may
+# call this service" shared by both controls, so they cannot silently drift
+# and contradict each other.
+#
+# api-gateway is the one documented exception
+# (deploy/helm/values/api-gateway.yaml sets
+# `useAuthorizedClientsForIngress: false`, `externalIngress: true`): its real
+# caller is the Kind ingress-nginx controller (deploy/RUNBOOK.md Section 2.2),
+# which is un-meshed, runs in its own `ingress-nginx` namespace, and is NOT a
+# telco-service release - it cannot be expressed as an `authorizedClients`
+# entry (those are ServiceAccount-bound mesh identities within `telco`). The
+# labels below (`app.kubernetes.io/name: ingress-nginx`,
+# `app.kubernetes.io/component: controller` in the `ingress-nginx` namespace)
+# match the standard Kind-provider manifest deploy/RUNBOOK.md Section 2.2
+# applies (`kubectl apply -f .../deploy/static/provider/kind/deploy.yaml`) -
+# NOT independently re-verified against a live cluster this session (no
+# `kubectl`/cluster access available - see this feature's final report).
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "telco-service.fullname" . }}-ingress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "telco-service.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "telco-service.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- if .Values.networkPolicy.externalIngress }}
+    # Un-meshed external ingress (Kind ingress-nginx controller). Its source is
+    # NOT meshed - it has no linkerd-proxy to shift the connection onto the mesh
+    # data path - so it connects to this pod's APP container port; the pod's own
+    # inbound iptables then redirects locally to its proxy. This is the one edge
+    # that legitimately stays on the app port (only api-gateway sets
+    # externalIngress: true).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+              app.kubernetes.io/component: controller
+      ports:
+        - protocol: TCP
+          port: {{ .Values.containerPort }}
+    {{- end }}
+    {{- $meshedClients := ternary .Values.meshPolicy.authorizedClients .Values.networkPolicy.ingressFrom .Values.networkPolicy.useAuthorizedClientsForIngress }}
+    {{- if $meshedClients }}
+    # Meshed in-cluster callers (Finding C fix, 2026-07-18). IMPORTANT: with the
+    # Linkerd mesh enforcing (ADR-026, edge control plane), meshed pod-to-pod
+    # traffic is delivered to this pod's linkerd-proxy INBOUND port 4143, NOT the
+    # app container port - so the allow rule targets 4143. An app-port rule here
+    # silently blocks all meshed traffic (live-verified: api-gateway ->
+    # customer-service times out 504 on a 9002 rule, succeeds on a 4143 rule).
+    # The per-identity gating is done by the mesh AuthorizationPolicy (19.3) on
+    # top of this coarse pod-to-pod L3/L4 allow; the source list is the same
+    # `authorizedClients` roster so the two controls cannot drift.
+    - from:
+        {{- range $meshedClients }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 4143
+    {{- end }}
+{{- end }}

@@ -6,63 +6,83 @@
 
     <parent>
         <groupId>com.telco</groupId>
-        <artifactId>microservices</artifactId>
+        <artifactId>domain-services-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
-        <relativePath>../pom.xml</relativePath>
+        <relativePath>../domain-services-parent/pom.xml</relativePath>
     </parent>
 
     <artifactId>payment-service</artifactId>
     <name>payment-service</name>
-    <description>Payment with mock PSP, idempotency, retry (port 9008, Domain Orchestration). Skeleton
-        only - no business code.</description>
+    <description>Payment with mock PSP, idempotency, retry (port 9008, Domain Orchestration).
+        Implements features 8.4-8.5: CQRS handlers, inbox consumer, retry scheduler, PSP circuit breaker.</description>
 
     <dependencies>
+        <!-- Per-service OpenAPI / Swagger UI (ARC-08). -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>com.telco.platform</groupId>
-            <artifactId>starter-api</artifactId>
+            <artifactId>starter-mediator</artifactId>
+        </dependency>
+        <!-- Consumes order.created.v1 idempotently via the transactional inbox (ADR-005). -->
+        <dependency>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>starter-inbox</artifactId>
+        </dependency>
+        <!-- Kafka listener for the inbox consumer (order.created.v1). -->
+        <dependency>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>starter-kafka</artifactId>
+        </dependency>
+
+        <!-- Resilience4j circuit breaker for PSP adapter (ADR-003, ADR-005). -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-circuitbreaker</artifactId>
+        </dependency>
+
+        <!-- Debezium outbox SMT regression test (test scope only, Sprint 09 Feature 9.5). -->
+        <dependency>
+            <groupId>io.debezium</groupId>
+            <artifactId>debezium-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>connect-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>connect-transforms</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Canonical Avro event contracts and the shared AvroContractAssertions test-jar (feature
+             14.5 phase 6, ADR-019): PaymentEventSchemaCompatTest compares real event records against
+             the governed schema in platform-event-contracts, not a local test-resources snapshot. -->
+        <dependency>
+            <groupId>com.telco.platform</groupId>
+            <artifactId>platform-event-contracts</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.telco.platform</groupId>
-            <artifactId>starter-security</artifactId>
+            <artifactId>platform-event-contracts</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
         </dependency>
+
+        <!-- Real Kafka broker for DisputeConsumersIntegrationTest (Sprint 22 Feature 22.6.3) -
+             proves the three dispute inbox consumers against a real dispute.events round trip. -->
         <dependency>
-            <groupId>com.telco.platform</groupId>
-            <artifactId>starter-observability</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-config</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>kafka</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>

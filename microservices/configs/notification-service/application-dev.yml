@@ -1,9 +1,8 @@
 # notification-service dev overrides.
 spring:
-  data:
-    mongodb:
-      uri: mongodb://localhost:27017/notification_db
+  mongodb:
+    uri: mongodb://localhost:27017/notification_db
   datasource:
-    url: jdbc:postgresql://localhost:5432/notification_outbox_db
+    url: jdbc:postgresql://localhost:5432/notification_db
     username: notification
     password: notification
