@@ -351,5 +351,8 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.meta.outputs.version_tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # scope is per-service: type=gha defaults to a single shared "buildkit" scope,
+          # which would let this matrix's 17 concurrent/sequential builds overwrite each
+          # other's cache instead of each service keeping its own.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

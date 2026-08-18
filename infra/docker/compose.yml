@@ -369,6 +369,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/config-server/Dockerfile
+      cache_from:
+        - type=gha,scope=config-server
+      cache_to:
+        - type=gha,mode=max,scope=config-server
     image: telco-config-server:local
     container_name: telco-config-server
     restart: *restart
@@ -410,6 +414,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/discovery-server/Dockerfile
+      cache_from:
+        - type=gha,scope=discovery-server
+      cache_to:
+        - type=gha,mode=max,scope=discovery-server
     image: telco-discovery-server:local
     container_name: telco-discovery-server
     restart: *restart
@@ -444,6 +452,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/api-gateway/Dockerfile
+      cache_from:
+        - type=gha,scope=api-gateway
+      cache_to:
+        - type=gha,mode=max,scope=api-gateway
     image: telco-api-gateway:local
     container_name: telco-api-gateway
     restart: *restart
@@ -700,6 +712,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/identity-service/Dockerfile
+      cache_from:
+        - type=gha,scope=identity-service
+      cache_to:
+        - type=gha,mode=max,scope=identity-service
     image: telco-identity-service:local
     container_name: telco-identity-service
     ports:
@@ -716,6 +732,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/customer-service/Dockerfile
+      cache_from:
+        - type=gha,scope=customer-service
+      cache_to:
+        - type=gha,mode=max,scope=customer-service
     image: telco-customer-service:local
     container_name: telco-customer-service
     ports:
@@ -732,6 +752,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/product-catalog-service/Dockerfile
+      cache_from:
+        - type=gha,scope=product-catalog-service
+      cache_to:
+        - type=gha,mode=max,scope=product-catalog-service
     image: telco-product-catalog-service:local
     container_name: telco-product-catalog-service
     ports:
@@ -748,6 +772,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/order-service/Dockerfile
+      cache_from:
+        - type=gha,scope=order-service
+      cache_to:
+        - type=gha,mode=max,scope=order-service
     image: telco-order-service:local
     container_name: telco-order-service
     ports:
@@ -764,6 +792,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/subscription-service/Dockerfile
+      cache_from:
+        - type=gha,scope=subscription-service
+      cache_to:
+        - type=gha,mode=max,scope=subscription-service
     image: telco-subscription-service:local
     container_name: telco-subscription-service
     ports:
@@ -780,6 +812,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/usage-service/Dockerfile
+      cache_from:
+        - type=gha,scope=usage-service
+      cache_to:
+        - type=gha,mode=max,scope=usage-service
     image: telco-usage-service:local
     container_name: telco-usage-service
     ports:
@@ -796,6 +832,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/billing-service/Dockerfile
+      cache_from:
+        - type=gha,scope=billing-service
+      cache_to:
+        - type=gha,mode=max,scope=billing-service
     image: telco-billing-service:local
     container_name: telco-billing-service
     ports:
@@ -818,6 +858,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/payment-service/Dockerfile
+      cache_from:
+        - type=gha,scope=payment-service
+      cache_to:
+        - type=gha,mode=max,scope=payment-service
     image: telco-payment-service:local
     container_name: telco-payment-service
     ports:
@@ -834,6 +878,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/notification-service/Dockerfile
+      cache_from:
+        - type=gha,scope=notification-service
+      cache_to:
+        - type=gha,mode=max,scope=notification-service
     image: telco-notification-service:local
     container_name: telco-notification-service
     depends_on:
@@ -854,6 +902,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/ticket-service/Dockerfile
+      cache_from:
+        - type=gha,scope=ticket-service
+      cache_to:
+        - type=gha,mode=max,scope=ticket-service
     image: telco-ticket-service:local
     container_name: telco-ticket-service
     ports:
@@ -870,6 +922,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/campaign-service/Dockerfile
+      cache_from:
+        - type=gha,scope=campaign-service
+      cache_to:
+        - type=gha,mode=max,scope=campaign-service
     image: telco-campaign-service:local
     container_name: telco-campaign-service
     ports:
@@ -888,6 +944,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/dispute-service/Dockerfile
+      cache_from:
+        - type=gha,scope=dispute-service
+      cache_to:
+        - type=gha,mode=max,scope=dispute-service
     image: telco-dispute-service:local
     container_name: telco-dispute-service
     ports:
@@ -905,6 +965,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/fraud-service/Dockerfile
+      cache_from:
+        - type=gha,scope=fraud-service
+      cache_to:
+        - type=gha,mode=max,scope=fraud-service
     image: telco-fraud-service:local
     container_name: telco-fraud-service
     ports:
@@ -929,6 +993,10 @@ services:
     build:
       context: ../../
       dockerfile: microservices/web-bff/Dockerfile
+      cache_from:
+        - type=gha,scope=web-bff
+      cache_to:
+        - type=gha,mode=max,scope=web-bff
     image: telco-web-bff:local
     container_name: telco-web-bff
     depends_on:
