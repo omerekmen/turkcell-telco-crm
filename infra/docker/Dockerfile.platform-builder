@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+# Build context: repo root (telco-crm/).
+# docker build -f infra/docker/Dockerfile.platform-builder -t telco-platform-builder:local .
+#
+# Shared base for every microservice's builder stage: installs the platform reactor
+# (BOM, core modules, starters) plus every microservice's pom.xml skeleton ONCE. Every
+# service Dockerfile then FROMs this image and only adds its own src/ + `mvn package`,
+# instead of each of the 17 services independently re-running the platform install.
+FROM maven:3.9-eclipse-temurin-21-alpine
+WORKDIR /workspace
+
+COPY platform/ platform/
+COPY microservices/pom.xml                microservices/pom.xml
+COPY --parents microservices/*/pom.xml ./
+
+RUN mvn -f platform/pom.xml install -DskipTests -Dschema.registry.skip=true --no-transfer-progress -q

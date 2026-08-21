@@ -1,17 +1,14 @@
 # syntax=docker/dockerfile:1
 # Build context: repo root (telco-crm/).
 # docker build -f microservices/discovery-server/Dockerfile -t discovery-server .
-FROM maven:3.9-eclipse-temurin-21-alpine AS builder
+FROM telco-platform-builder:local AS builder
 WORKDIR /workspace
 
-COPY platform/ platform/
-COPY microservices/pom.xml                microservices/pom.xml
-COPY --parents microservices/*/pom.xml ./
 COPY microservices/discovery-server/src              microservices/discovery-server/src
 
-RUN --mount=type=cache,target=/root/.m2,sharing=locked \
-    mvn -f platform/pom.xml install -DskipTests -Dschema.registry.skip=true --no-transfer-progress -q && \
-    mvn -f microservices/pom.xml -pl discovery-server package -DskipTests --no-transfer-progress -q
+# Platform reactor is already installed in the telco-platform-builder base image
+# (built once, shared by every service) - this layer only compiles this service.
+RUN mvn -f microservices/pom.xml -pl discovery-server package -DskipTests --no-transfer-progress -q
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

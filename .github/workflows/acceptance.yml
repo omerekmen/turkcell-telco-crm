@@ -77,6 +77,19 @@ jobs:
           cp infra/docker/.env.example infra/docker/.env
           echo "PSP_MOCK_FORCE_OUTCOME=SUCCESS" >> infra/docker/.env
 
+      # Every one of the 17 service Dockerfiles FROMs telco-platform-builder:local instead
+      # of independently re-running `mvn install` on the platform reactor - built once here
+      # and loaded into the local daemon so docker compose's build below can resolve it.
+      # type=gha caches this step itself across runs (scoped separately from every service).
+      - name: Build shared platform base image
+        run: |
+          docker buildx build \
+            --cache-from type=gha,scope=platform-builder \
+            --cache-to type=gha,mode=max,scope=platform-builder \
+            -f infra/docker/Dockerfile.platform-builder \
+            -t telco-platform-builder:local \
+            --load .
+
       - name: Build platform + domain-service images
         # COMPOSE_BAKE routes this build through buildx bake, the path that honors each
         # service's cache_from/cache_to (type=gha) in infra/docker/compose.yml.
