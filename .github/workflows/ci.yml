@@ -263,8 +263,8 @@ jobs:
             FILES="$(git diff --name-only "$BEFORE" "$AFTER")"
             echo "Changed files in ${BEFORE}..${AFTER}:" >&2
             echo "$FILES" >&2
-            if echo "$FILES" | grep -qE '^(platform/|microservices/configs/|microservices/pom\.xml$)'; then
-              rebuild_all "Shared foundation changed (platform / configs / reactor pom); rebuilding all services."
+            if echo "$FILES" | grep -qE '^(platform/|microservices/configs/|microservices/pom\.xml$|infra/docker/Dockerfile\.platform-builder$)'; then
+              rebuild_all "Shared foundation changed (platform / configs / reactor pom / platform-builder base image); rebuilding all services."
             else
               CHANGED=""
               for svc in $SERVICES; do
