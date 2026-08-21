@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 # Build context: repo root (telco-crm/).
 # docker build -f microservices/customer-service/Dockerfile -t customer-service .
-FROM telco-platform-builder:local AS builder
+ARG PLATFORM_BUILDER_IMAGE=telco-platform-builder:local
+FROM ${PLATFORM_BUILDER_IMAGE} AS builder
 WORKDIR /workspace
 
 COPY microservices/customer-service/src              microservices/customer-service/src

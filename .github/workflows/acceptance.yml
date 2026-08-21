@@ -53,10 +53,11 @@ jobs:
 
       # Activates a docker-container buildx builder so the image-build step below can
       # export/import layer cache via the type=gha backend (infra/docker/compose.yml's
-      # per-service cache_from/cache_to). Without this, every one of the 17 service
-      # images rebuilds the whole platform reactor from scratch on every run - the
-      # BuildKit --mount=type=cache in each Dockerfile only survives within a single
-      # runner/job, never across separate CI runs.
+      # per-service cache_from/cache_to, plus platform-builder's own scope). The
+      # platform-builder service (compose.yml, no profile - always built) installs the
+      # platform reactor once and is wired into every domain service's build via
+      # additional_contexts, instead of each of the 17 services independently re-running
+      # `mvn install` on it.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -76,19 +77,6 @@ jobs:
           echo "ENCRYPT_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
           cp infra/docker/.env.example infra/docker/.env
           echo "PSP_MOCK_FORCE_OUTCOME=SUCCESS" >> infra/docker/.env
-
-      # Every one of the 17 service Dockerfiles FROMs telco-platform-builder:local instead
-      # of independently re-running `mvn install` on the platform reactor - built once here
-      # and loaded into the local daemon so docker compose's build below can resolve it.
-      # type=gha caches this step itself across runs (scoped separately from every service).
-      - name: Build shared platform base image
-        run: |
-          docker buildx build \
-            --cache-from type=gha,scope=platform-builder \
-            --cache-to type=gha,mode=max,scope=platform-builder \
-            -f infra/docker/Dockerfile.platform-builder \
-            -t telco-platform-builder:local \
-            --load .
 
       - name: Build platform + domain-service images
         # COMPOSE_BAKE routes this build through buildx bake, the path that honors each
