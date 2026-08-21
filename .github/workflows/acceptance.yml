@@ -53,10 +53,11 @@ jobs:
 
       # Activates a docker-container buildx builder so the image-build step below can
       # export/import layer cache via the type=gha backend (infra/docker/compose.yml's
-      # per-service cache_from/cache_to). Without this, every one of the 17 service
-      # images rebuilds the whole platform reactor from scratch on every run - the
-      # BuildKit --mount=type=cache in each Dockerfile only survives within a single
-      # runner/job, never across separate CI runs.
+      # per-service cache_from/cache_to, plus platform-builder's own scope). The
+      # platform-builder service (compose.yml, no profile - always built) installs the
+      # platform reactor once and is wired into every domain service's build via
+      # additional_contexts, instead of each of the 17 services independently re-running
+      # `mvn install` on it.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 

@@ -263,8 +263,8 @@ jobs:
             FILES="$(git diff --name-only "$BEFORE" "$AFTER")"
             echo "Changed files in ${BEFORE}..${AFTER}:" >&2
             echo "$FILES" >&2
-            if echo "$FILES" | grep -qE '^(platform/|microservices/configs/|microservices/pom\.xml$)'; then
-              rebuild_all "Shared foundation changed (platform / configs / reactor pom); rebuilding all services."
+            if echo "$FILES" | grep -qE '^(platform/|microservices/configs/|microservices/pom\.xml$|infra/docker/Dockerfile\.platform-builder$)'; then
+              rebuild_all "Shared foundation changed (platform / configs / reactor pom / platform-builder base image); rebuilding all services."
             else
               CHANGED=""
               for svc in $SERVICES; do
@@ -333,15 +333,41 @@ jobs:
           # Docker tags allow [A-Za-z0-9._-]; sanitize just in case.
           VERSION_TAG="$(echo "$VERSION" | sed 's/[^A-Za-z0-9._-]/-/g')"
           echo "image=$IMAGE"             >> "$GITHUB_OUTPUT"
+          echo "owner=$OWNER"             >> "$GITHUB_OUTPUT"
           echo "sha_tag=$SHA_TAG"         >> "$GITHUB_OUTPUT"
           echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
           echo "Tagging $IMAGE with: $SHA_TAG, $VERSION_TAG, latest" >&2
+
+      # Each matrix job is its own runner/Docker daemon, so every service's Dockerfile
+      # (FROM ${PLATFORM_BUILDER_IMAGE}, default telco-platform-builder:local) needs its
+      # own copy of the base image. The buildx builder set up above uses the
+      # docker-container driver (required for type=gha cache export/import), which does
+      # NOT share the host Docker daemon's local image store - a --load'ed local tag is
+      # invisible to a separate docker/build-push-action invocation on the same builder,
+      # so the base image is pushed to GHCR instead and referenced by digest via a build
+      # arg, exactly like any other real registry dependency. Still cached via type=gha
+      # scope=platform-builder, so this is a cache hit whenever platform/ and every
+      # module's pom.xml are unchanged, even across different services' runners.
+      - name: Build and push shared platform base image
+        id: platform_builder
+        run: |
+          set -euo pipefail
+          REF="ghcr.io/${{ steps.meta.outputs.owner }}/telco-platform-builder:cache"
+          docker buildx build \
+            --cache-from type=gha,scope=platform-builder \
+            --cache-to type=gha,mode=max,scope=platform-builder \
+            -f infra/docker/Dockerfile.platform-builder \
+            -t "$REF" \
+            --push .
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
           context: .                                         # build context = repo root
           file: microservices/${{ matrix.service }}/Dockerfile
+          build-args: |
+            PLATFORM_BUILDER_IMAGE=${{ steps.platform_builder.outputs.ref }}
           push: true
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_tag }}

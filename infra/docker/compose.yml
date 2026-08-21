@@ -209,6 +209,21 @@ volumes:
 
 services:
 
+  # No profiles: always built alongside any service build (platform or apps) so every
+  # domain-service Dockerfile's `additional_contexts: telco-platform-builder:local=service:
+  # platform-builder` below can resolve it as a bake target dependency rather than a
+  # registry pull - installs the platform reactor once, shared by every service build,
+  # instead of each of the 17 services independently re-running `mvn install` on it.
+  platform-builder:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.platform-builder
+      cache_from:
+        - type=gha,scope=platform-builder
+      cache_to:
+        - type=gha,mode=max,scope=platform-builder
+    image: telco-platform-builder:local
+
   # ---------------------------------------------------------------- PostgreSQL
   postgres:
     image: postgres:${POSTGRES_VERSION:-17}
@@ -404,6 +419,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/config-server/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=config-server
       cache_to:
@@ -450,6 +467,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/discovery-server/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=discovery-server
       cache_to:
@@ -489,6 +508,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/api-gateway/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=api-gateway
       cache_to:
@@ -760,6 +781,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/identity-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=identity-service
       cache_to:
@@ -781,6 +804,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/customer-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=customer-service
       cache_to:
@@ -802,6 +827,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/product-catalog-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=product-catalog-service
       cache_to:
@@ -823,6 +850,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/order-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=order-service
       cache_to:
@@ -844,6 +873,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/subscription-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=subscription-service
       cache_to:
@@ -865,6 +896,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/usage-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=usage-service
       cache_to:
@@ -886,6 +919,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/billing-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=billing-service
       cache_to:
@@ -913,6 +948,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/payment-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=payment-service
       cache_to:
@@ -934,6 +971,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/notification-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=notification-service
       cache_to:
@@ -959,6 +998,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/ticket-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=ticket-service
       cache_to:
@@ -980,6 +1021,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/campaign-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=campaign-service
       cache_to:
@@ -1003,6 +1046,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/dispute-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=dispute-service
       cache_to:
@@ -1025,6 +1070,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/fraud-service/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=fraud-service
       cache_to:
@@ -1054,6 +1101,8 @@ services:
     build:
       context: ../../
       dockerfile: microservices/web-bff/Dockerfile
+      additional_contexts:
+        - telco-platform-builder:local=service:platform-builder
       cache_from:
         - type=gha,scope=web-bff
       cache_to:
