@@ -1,3 +1,4 @@
+{{- if .Values.observability.enabled }}
 {{- $c := "loki" -}}
 # Grafana Loki - log storage, receives OTLP logs from the collector (ADR-012). Config
 # reused verbatim from infra/docker/observability/loki.
@@ -96,3 +97,4 @@ spec:
   resources:
     requests:
       storage: {{ .Values.observability.loki.storage | quote }}
+{{- end }}

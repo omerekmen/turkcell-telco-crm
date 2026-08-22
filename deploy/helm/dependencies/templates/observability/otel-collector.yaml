@@ -1,3 +1,4 @@
+{{- if .Values.observability.enabled }}
 {{- $c := "otel-collector" -}}
 # OpenTelemetry Collector - OTLP ingest from services, fanning out traces -> Tempo,
 # metrics -> Prometheus scrape (:8889), logs -> Loki (ADR-012). Config reused verbatim
@@ -77,3 +78,4 @@ spec:
         - name: config
           configMap:
             name: otel-collector-config
+{{- end }}

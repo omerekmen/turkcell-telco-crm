@@ -1,3 +1,4 @@
+{{- if .Values.observability.enabled }}
 {{- $c := "grafana" -}}
 # Grafana - dashboards over Prometheus/Loki/Tempo (ADR-012). Datasource provisioning
 # is reused verbatim from infra/docker/observability/grafana; its datasource URLs
@@ -134,3 +135,4 @@ spec:
   resources:
     requests:
       storage: {{ .Values.observability.grafana.storage | quote }}
+{{- end }}
