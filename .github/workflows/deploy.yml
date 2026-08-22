@@ -223,6 +223,15 @@ jobs:
             # meshPolicy.enabled alone can suppress (it deliberately does NOT
             # gate the Server object - see values.yaml's linkerdCRDsInstalled
             # comment for why that's a separate, orthogonal flag).
+            #
+            # autoscaling.enabled=false: the chart's default HPA (minReplicas:
+            # 2, 250m CPU request per pod) needs 2 * 13 services = 26 app pods
+            # scheduled immediately on top of every stateful dependency - live-
+            # verified this exceeds a single-node Kind cluster's allocatable
+            # CPU on a GitHub-hosted runner (a second api-gateway replica sat
+            # Pending: "Insufficient cpu" until the rollout-status wait timed
+            # out at 600s). One replica per service is enough for a smoke test;
+            # production deploys keep autoscaling enabled.
             helm upgrade --install "$svc" deploy/helm/telco-service \
               -n "$NAMESPACE" \
               -f "deploy/helm/values/${svc}.yaml" \
@@ -231,7 +240,8 @@ jobs:
               --set "image.tag=${TAG}" \
               --set "imagePullSecrets[0].name=${PULL_SECRET}" \
               --set networkPolicy.enabled=false \
-              --set linkerdCRDsInstalled=false
+              --set linkerdCRDsInstalled=false \
+              --set autoscaling.enabled=false
           }
 
           # config-server first (every other service bootstraps its config from it),
