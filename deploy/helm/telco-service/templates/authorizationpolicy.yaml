@@ -11,8 +11,10 @@
 # values.yaml `meshPolicy` comment for why the gateway's Server is left
 # without a restricting policy: its real caller, the Kind ingress-nginx
 # controller, runs un-meshed in its own namespace and has no mesh identity to
-# present).
-{{- if .Values.meshPolicy.enabled }}
+# present), AND `.Values.linkerdCRDsInstalled` - this is a `policy.linkerd.io`
+# CRD resource like its sibling templates/server.yaml, so it cannot render at
+# all where Linkerd's CRDs aren't installed (see that value's comment).
+{{- if and .Values.linkerdCRDsInstalled .Values.meshPolicy.enabled }}
 apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:

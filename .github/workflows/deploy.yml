@@ -214,6 +214,15 @@ jobs:
             # networkPolicy.enabled=false: matches the dependencies chart's own
             # override above - this chart's default-deny-compatible allow rules
             # are equally mesh-only (port 4143), and this cluster has no mesh.
+            #
+            # linkerdCRDsInstalled=false: this chart also renders Server/
+            # AuthorizationPolicy/MeshTLSAuthentication (policy.linkerd.io CRD
+            # resources) - applying those where Linkerd's CRDs were never
+            # installed fails Helm outright ("no matches for kind Server in
+            # version policy.linkerd.io/v1beta1"), not something
+            # meshPolicy.enabled alone can suppress (it deliberately does NOT
+            # gate the Server object - see values.yaml's linkerdCRDsInstalled
+            # comment for why that's a separate, orthogonal flag).
             helm upgrade --install "$svc" deploy/helm/telco-service \
               -n "$NAMESPACE" \
               -f "deploy/helm/values/${svc}.yaml" \
@@ -221,7 +230,8 @@ jobs:
               --set "image.owner=${OWNER}" \
               --set "image.tag=${TAG}" \
               --set "imagePullSecrets[0].name=${PULL_SECRET}" \
-              --set networkPolicy.enabled=false
+              --set networkPolicy.enabled=false \
+              --set linkerdCRDsInstalled=false
           }
 
           # config-server first (every other service bootstraps its config from it),
