@@ -168,9 +168,25 @@ jobs:
           # tracked follow-up (it currently exits 1 at the Confluent "Configuring"
           # stage), and --wait would hang on it. We wait explicitly on the CORE
           # deps the services actually need, below.
+          #
+          # networkPolicy.enabled=false: the default-deny baseline's only allow
+          # rules open port 4143 (the Linkerd mesh proxy's inbound port) - this
+          # ephemeral Kind cluster never installs Linkerd (no such step in this
+          # workflow), so nothing here is meshed and nothing ever listens on
+          # 4143. Under default-deny with those rules, ALL pod-to-pod backend
+          # traffic is blocked regardless, including minio-createbuckets's
+          # direct connection to minio:9000 (its post-install hook Job, which
+          # is not a telco-service release and gets no egress-allow rule at
+          # all) - it hangs at "waiting for minio..." for the full --timeout
+          # every run, confirmed via kubectl logs/describe. NetworkPolicy
+          # enforcement is a production/meshed-environment concern (ADR-026);
+          # this smoke-test cluster's job is verifying the app charts deploy
+          # and become healthy, not re-proving the mesh policy - production
+          # deploys (where Linkerd is actually installed) keep it enabled.
           helm upgrade --install telco-deps deploy/helm/dependencies \
             -n "$NAMESPACE" \
             --set createNamespace=false \
+            --set networkPolicy.enabled=false \
             --timeout 20m
 
       - name: Wait for core dependencies
@@ -195,13 +211,17 @@ jobs:
           install_service() {
             svc="$1"
             echo "==> helm upgrade --install $svc (tag $TAG)" >&2
+            # networkPolicy.enabled=false: matches the dependencies chart's own
+            # override above - this chart's default-deny-compatible allow rules
+            # are equally mesh-only (port 4143), and this cluster has no mesh.
             helm upgrade --install "$svc" deploy/helm/telco-service \
               -n "$NAMESPACE" \
               -f "deploy/helm/values/${svc}.yaml" \
               --set image.registry=ghcr.io \
               --set "image.owner=${OWNER}" \
               --set "image.tag=${TAG}" \
-              --set "imagePullSecrets[0].name=${PULL_SECRET}"
+              --set "imagePullSecrets[0].name=${PULL_SECRET}" \
+              --set networkPolicy.enabled=false
           }
 
           # config-server first (every other service bootstraps its config from it),
