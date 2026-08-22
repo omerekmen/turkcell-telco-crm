@@ -248,19 +248,38 @@ jobs:
             # out at 600s). One replica per service is enough for a smoke test;
             # production deploys keep autoscaling enabled.
             #
-            # resources.requests.cpu=100m: even at 1 replica each (no HPA),
-            # 13 services * the chart's default 250m request = 3.25 vCPU,
-            # plus ~700m for the backend dependencies (observability disabled
+            # resources.requests.cpu: even at 1 replica each (no HPA), 13
+            # services * the chart's default 250m request = 3.25 vCPU, plus
+            # ~700m for the backend dependencies (observability disabled
             # above) - still more than a single-node Kind cluster on a shared
             # GitHub-hosted runner can schedule (live-verified: order-service,
             # 7th in the install order, sat Pending on "Insufficient cpu" with
-            # only 6 of 13 app pods running). `requests` only gates scheduling
-            # admission, not runtime throughput - `limits.cpu` (the chart's
-            # default 500m) is untouched, so a pod can still burst above this
-            # once scheduled if the node has spare cycles. Combined with
-            # observability.enabled=false above, this is the second of two
-            # levers pulled together to fit the platform on one CI node;
-            # production deploys keep the chart's default request.
+            # only 6 of 13 app pods running at 250m/service). 130m (down from
+            # 250m) fits all 13 with headroom to spare - live-verified at
+            # 100m first (too aggressive, see below), then 130m. `requests`
+            # gates scheduling admission; `limits.cpu` (the chart's default
+            # 500m) is untouched, so a pod can still burst above this once
+            # scheduled if the node has spare cycles. Combined with
+            # observability.enabled=false above, this is one of three levers
+            # pulled together to fit the platform on one CI node; production
+            # deploys keep the chart's default request.
+            #
+            # probes.startup.failureThreshold=45: under REAL node contention
+            # (not just scheduling admission), `requests.cpu` also sets the
+            # cgroup's proportional CPU share (CFS shares) - a low request
+            # gets meaningfully less wall-clock CPU than the chart's default
+            # once every pod on the node is actually competing for cycles,
+            # not just less priority for being scheduled at all. Live-
+            # verified at 100m: identity-service scheduled and started fine
+            # but was killed and restarted 3 times by the chart's default
+            # startup probe budget (10s + 10s*30 = ~5 min) before it finished
+            # booting under that throttling. 45 (~7.7 min) stays under the
+            # rollout-status --timeout=600s below with margin, and under
+            # Kubernetes' own Deployment progressDeadlineSeconds (600s
+            # default, not overridden by this chart). Kept even after raising
+            # the CPU request to 130m, as a safety margin against slower
+            # startup under contention - a smoke test can afford to wait
+            # longer; production deploys keep the chart's default budget.
             helm upgrade --install "$svc" deploy/helm/telco-service \
               -n "$NAMESPACE" \
               -f "deploy/helm/values/${svc}.yaml" \
@@ -271,7 +290,8 @@ jobs:
               --set networkPolicy.enabled=false \
               --set linkerdCRDsInstalled=false \
               --set autoscaling.enabled=false \
-              --set resources.requests.cpu=100m
+              --set resources.requests.cpu=130m \
+              --set probes.startup.failureThreshold=45
           }
 
           # config-server first (every other service bootstraps its config from it),
@@ -348,4 +368,19 @@ jobs:
           echo "::endgroup::"
           echo "::group::Recent events"
           kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -50
+          echo "::endgroup::"
+          # Container logs for every non-Ready pod - the events dump above is
+          # tail'd to 50 lines total across the whole namespace, so a crashing
+          # pod's own reason (stack trace, OOMKilled, config error) is easily
+          # cut off by other pods' events. --previous captures the last
+          # terminated instance's logs, which is where a crash-loop's actual
+          # failure reason lives (the CURRENT instance may not have logged
+          # anything relevant yet).
+          echo "::group::Logs for non-Ready pods"
+          for pod in $(kubectl -n "$NAMESPACE" get pods --no-headers | awk '{split($2,r,"/"); if (r[1] != r[2]) print $1}'); do
+            echo "--- $pod (current) ---"
+            kubectl -n "$NAMESPACE" logs "$pod" --tail=100
+            echo "--- $pod (previous, if any) ---"
+            kubectl -n "$NAMESPACE" logs "$pod" --previous --tail=100 2>&1
+          done
           echo "::endgroup::"
