@@ -36,11 +36,11 @@ jobs:
         run: |
           # A random per-run delimiter (not a fixed "EOF") avoids collision if the
           # commit message itself ever contains a line matching the delimiter, and
-          # passing the message via env: (rather than interpolating ${{ }} directly
-          # into the script) avoids both that collision class of bug and shell/
-          # injection risk from arbitrary commit message content (quotes,
+          # passing the message via the env block above (rather than templating it
+          # directly into this script) avoids both that collision class of bug and
+          # shell/injection risk from arbitrary commit message content (quotes,
           # backticks, $(...), multiple lines) - a long, multi-line squash-merge
-          # commit message broke the previous fixed-"EOF" + direct-interpolation
+          # commit message broke the previous fixed-"EOF" + direct-templating
           # version outright ("Invalid value. Matching delimiter not found 'EOF'").
           delimiter="$(openssl rand -hex 8)"
           {
