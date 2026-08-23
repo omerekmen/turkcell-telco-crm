@@ -284,6 +284,20 @@ jobs:
             # own Deployment progressDeadlineSeconds default) regardless, as
             # a safety margin a smoke test can afford; production deploys
             # keep the chart's default budget.
+            #
+            # config.EUREKA_HOST=discovery-server: THE root cause of Smoke tests
+            # failing outright ("500 Internal Server Error" on every authenticated
+            # READ, api-gateway's own logs showing "No servers available for
+            # service: product-catalog-service"). microservices/configs/
+            # application-docker.yml already points Eureka at discovery-server:8761
+            # correctly, but every service's SPRING_PROFILES_ACTIVE is dev,k8s, not
+            # dev,docker - so that file never loaded for a Kubernetes deployment,
+            # and application.yml's bare default (${EUREKA_HOST:localhost}) applied
+            # instead, for EVERY service, both registering AND discovering.
+            # microservices/configs/application-k8s.yml now exists (mirroring
+            # application-docker.yml) as the proper long-term fix, taking effect on
+            # the next image build; this env var takes effect immediately against
+            # the already-built image being used to verify this pipeline.
             helm upgrade --install "$svc" deploy/helm/telco-service \
               -n "$NAMESPACE" \
               -f "deploy/helm/values/${svc}.yaml" \
@@ -295,7 +309,8 @@ jobs:
               --set linkerdCRDsInstalled=false \
               --set autoscaling.enabled=false \
               --set resources.requests.cpu=100m \
-              --set probes.startup.failureThreshold=45
+              --set probes.startup.failureThreshold=45 \
+              --set config.EUREKA_HOST=discovery-server
           }
 
           # config-server first (every other service bootstraps its config from it),
