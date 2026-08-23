@@ -37,6 +37,13 @@ config:
   # DB credentials from the environment instead.
   SPRING_PROFILES_ACTIVE: dev,k8s
   EUREKA_USERNAME: eureka
+  # Was missing entirely: microservices/configs/billing-service/application.yml's
+  # telco.platform.lock.redis.address embeds ${REDIS_HOST:localhost} directly - without
+  # this, the Redisson-backed distributedLock bean (guards the bill-run's run-level lock)
+  # fails to connect to Redis in-cluster, which is a REQUIRED bean, so Spring context
+  # startup fails outright (crashloop). Same fix as subscription-service/campaign-service,
+  # the other two platform.lock consumers.
+  REDIS_HOST: redis
 
 secrets:
   CONFIG_SERVER_PASSWORD: config

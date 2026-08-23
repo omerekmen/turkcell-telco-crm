@@ -51,6 +51,13 @@ config:
   # instead of the docker profile's plaintext DB block.
   SPRING_PROFILES_ACTIVE: dev,k8s
   EUREKA_USERNAME: eureka
+  # Was missing entirely: microservices/configs/campaign-service/application.yml's
+  # telco.platform.lock.redis.address embeds ${REDIS_HOST:localhost} directly - without
+  # this, the Redisson-backed distributedLock bean (guards the redemption reservation-
+  # expiry reaper) fails to connect to Redis in-cluster, which is a REQUIRED bean, so
+  # Spring context startup fails outright (crashloop). Same fix as subscription-service/
+  # billing-service, the other two platform.lock consumers.
+  REDIS_HOST: redis
 
 secrets:
   CONFIG_SERVER_PASSWORD: config
