@@ -396,3 +396,19 @@ jobs:
             kubectl -n "$NAMESPACE" logs "$pod" --previous --tail=100 2>&1
           done
           echo "::endgroup::"
+          # A pod can be fully Ready (passes its own health check) and still 500 on an
+          # actual request - the loop above only catches crash-looping pods, missing that
+          # case entirely. api-gateway and product-catalog-service are the two names in
+          # the smoke test's own READ_PATH edge chain (Ingress -> gateway -> JWT ->
+          # Eureka route -> product-catalog-service -> its DB); grep for ERROR/Exception
+          # so a healthy service's routine INFO logging doesn't bury the one line that
+          # matters, same rationale as the --previous capture above.
+          echo "::group::Logs for api-gateway and product-catalog-service (grepped for errors)"
+          for svc in api-gateway product-catalog-service; do
+            pod=$(kubectl -n "$NAMESPACE" get pods -l "app.kubernetes.io/name=${svc}" -o name | head -1)
+            if [ -n "$pod" ]; then
+              echo "--- $pod ---"
+              kubectl -n "$NAMESPACE" logs "$pod" --tail=1000 | grep -iE "error|exception|caused by|warn" || echo "(no ERROR/Exception/WARN lines in the last 1000)"
+            fi
+          done
+          echo "::endgroup::"
