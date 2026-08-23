@@ -1,7 +1,7 @@
 site_name: Telco CRM Platform Documentation
 site_description: Documentation hub for the Telco CRM Platform - architecture, services, events, security, and how to build and run it.
-site_url: https://turkcell-gygy-5-0-group7.github.io/turkcell-telco-crm/
-repo_url: https://github.com/turkcell-gygy-5-0-group7/turkcell-telco-crm
+site_url: https://omerekmen.github.io/turkcell-telco-crm/
+repo_url: https://github.com/omerekmen/turkcell-telco-crm
 repo_name: turkcell-telco-crm
 edit_uri: edit/master/docs/
 
