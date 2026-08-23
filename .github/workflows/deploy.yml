@@ -306,14 +306,22 @@ jobs:
                 order-service subscription-service usage-service billing-service \
                 payment-service notification-service ticket-service campaign-service \
                 dispute-service fraud-service"
+          # Install-then-wait ONE service at a time (like config-server/discovery-server
+          # above), not install-all-then-wait-all: batch-installing let all 13 services
+          # start their JVM bootstrap simultaneously, spiking CPU contention on this
+          # single-node cluster exactly during the window each pod is most CPU-hungry
+          # (class loading, Flyway, Hibernate bootstrap) - live-verified this caused
+          # startup-probe kills regardless of how far resources.requests.cpu /
+          # probes.startup.failureThreshold above were tuned, since the problem was
+          # peak CONCURRENT demand, not any one service's own budget. One at a time
+          # keeps at most ~2 services in their expensive boot phase simultaneously
+          # (the one starting plus whichever hasn't reached steady-state idle CPU
+          # yet), matching what already worked for config-server/discovery-server.
+          # Slower overall for this step, but a smoke test can afford that; rolling
+          # deploys use maxUnavailable:0, so rollout status only goes green once the
+          # new pod is Ready - a bad image blocks then fails, dropping into rollback.
           for svc in $REST; do
             install_service "$svc"
-          done
-
-          # Rolling deploys use maxUnavailable:0, so rollout status only goes green
-          # once the new pods are Ready. A bad image => this blocks then fails, which
-          # (like a smoke failure) drops into the rollback step below.
-          for svc in $REST; do
             echo "==> rollout status $svc" >&2
             kubectl -n "$NAMESPACE" rollout status deploy/"$svc" --timeout=600s
           done
