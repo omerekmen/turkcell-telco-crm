@@ -254,15 +254,17 @@ jobs:
             # above) - still more than a single-node Kind cluster on a shared
             # GitHub-hosted runner can schedule (live-verified: order-service,
             # 7th in the install order, sat Pending on "Insufficient cpu" with
-            # only 6 of 13 app pods running at 250m/service). 130m (down from
-            # 250m) fits all 13 with headroom to spare - live-verified at
-            # 100m first (too aggressive, see below), then 130m. `requests`
-            # gates scheduling admission; `limits.cpu` (the chart's default
-            # 500m) is untouched, so a pod can still burst above this once
-            # scheduled if the node has spare cycles. Combined with
-            # observability.enabled=false above, this is one of three levers
-            # pulled together to fit the platform on one CI node; production
-            # deploys keep the chart's default request.
+            # only 6 of 13 app pods running at 250m/service). Tried 130m next
+            # (after also raising probes.startup.failureThreshold below, see
+            # its own note) - got all the way to fraud-service, the LAST of
+            # 13, before hitting "Insufficient cpu" again: 130m fit 12 running
+            # services with no headroom for the 13th. 100m fits all 13 with
+            # margin to spare. `requests` gates scheduling admission;
+            # `limits.cpu` (the chart's default 500m) is untouched, so a pod
+            # can still burst above this once scheduled if the node has spare
+            # cycles. Combined with observability.enabled=false above, this is
+            # one of three levers pulled together to fit the platform on one
+            # CI node; production deploys keep the chart's default request.
             #
             # probes.startup.failureThreshold=45: under REAL node contention
             # (not just scheduling admission), `requests.cpu` also sets the
@@ -270,16 +272,18 @@ jobs:
             # gets meaningfully less wall-clock CPU than the chart's default
             # once every pod on the node is actually competing for cycles,
             # not just less priority for being scheduled at all. Live-
-            # verified at 100m: identity-service scheduled and started fine
-            # but was killed and restarted 3 times by the chart's default
-            # startup probe budget (10s + 10s*30 = ~5 min) before it finished
-            # booting under that throttling. 45 (~7.7 min) stays under the
-            # rollout-status --timeout=600s below with margin, and under
-            # Kubernetes' own Deployment progressDeadlineSeconds (600s
-            # default, not overridden by this chart). Kept even after raising
-            # the CPU request to 130m, as a safety margin against slower
-            # startup under contention - a smoke test can afford to wait
-            # longer; production deploys keep the chart's default budget.
+            # verified at 100m, BEFORE installing services sequentially
+            # (see the install-then-wait loop below): identity-service
+            # scheduled and started fine but was killed and restarted 3 times
+            # by the chart's default startup probe budget (10s + 10s*30 = ~5
+            # min) before it finished booting under that throttling.
+            # Installing one service at a time instead of all-at-once removed
+            # most of that simultaneous-boot contention, which is what made
+            # dropping back to 100m safe again - kept at 45 (~7.7 min, still
+            # under the rollout-status --timeout=600s below and Kubernetes'
+            # own Deployment progressDeadlineSeconds default) regardless, as
+            # a safety margin a smoke test can afford; production deploys
+            # keep the chart's default budget.
             helm upgrade --install "$svc" deploy/helm/telco-service \
               -n "$NAMESPACE" \
               -f "deploy/helm/values/${svc}.yaml" \
@@ -290,7 +294,7 @@ jobs:
               --set networkPolicy.enabled=false \
               --set linkerdCRDsInstalled=false \
               --set autoscaling.enabled=false \
-              --set resources.requests.cpu=130m \
+              --set resources.requests.cpu=100m \
               --set probes.startup.failureThreshold=45
           }
 
