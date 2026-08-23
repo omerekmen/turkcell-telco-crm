@@ -24,11 +24,13 @@
 An event-driven microservices platform that manages the full subscriber lifecycle for a GSM
 operator (the fictional operator "TelcoX"): customer registration and KYC, product and tariff
 catalog, ordering, subscription activation, usage and quota tracking, billing, payment,
-notification, and customer support ticketing.
+notification, customer support ticketing, marketing campaigns, invoice disputes/chargebacks, and
+SIM-swap fraud detection - fronted by a web console (SvelteKit + BFF).
 
 The platform is built around a custom CQRS + Mediator framework, a transactional outbox/inbox
 for reliable eventing, and a governed hybrid application architecture. It is documented through
-Architecture Decision Records, which are the single source of technical truth.
+Architecture Decision Records (29 and counting), which are the single source of technical truth,
+and published as a browsable site: **[omerekmen.github.io/turkcell-telco-crm](https://omerekmen.github.io/turkcell-telco-crm/)**.
 
 ## Table of Contents
 
@@ -54,7 +56,8 @@ Architecture Decision Records, which are the single source of technical truth.
 | Application architecture | Hybrid governed modes: Simple, CQRS + Mediator, Domain Orchestration (ADR-004) |
 | Messaging | Apache Kafka with Avro and Schema Registry; transactional outbox via Debezium CDC |
 | Consistency | Eventual consistency with transactional outbox and idempotent inbox |
-| Deployment | Docker for local, Kubernetes for production |
+| Deployment | Docker Compose for local; Kubernetes (Helm charts) for production, with Linkerd mTLS and Vault-backed secrets |
+| Frontend | SvelteKit web console, served through a dedicated BFF (`web-bff`) |
 | Authority | Architecture Decision Records in `architecture/adr/` |
 
 The full business context is in the [Business Requirements Document](docs/product/BRD.md).
@@ -62,7 +65,12 @@ The full business context is in the [Business Requirements Document](docs/produc
 ## Architecture
 
 ```text
-[ Web / Mobile Client ]
+[ Web Console (SvelteKit) ]
+        |
+        v
++-----------------+
+|     web-bff     |   session/edge concerns for the browser client
++-----------------+
         |
         v
 +-----------------+
@@ -73,17 +81,17 @@ The full business context is in the [Business Requirements Document](docs/produc
    | Discovery (dev) | Config    |
    +-----------------------------+
         |
-        v   (REST in / gRPC service-to-service)
-identity  customer  catalog  order  subscription  usage
-   |        |         |        |         |          |
-   +--------+---------+--------+---------+----------+
-                          |
-                     [ Kafka Bus + Schema Registry ]
-                          |
-   +---------+-----------+-----------+----------+
-   |         |           |           |          |
-   v         v           v           v          v
- billing   payment   notification  ticket   analytics (future)
+        v   (REST in / gRPC service-to-service, mTLS via Linkerd in k8s)
+identity  customer  catalog  order  subscription  usage  campaign  dispute  fraud
+   |        |         |        |         |          |        |         |       |
+   +--------+---------+--------+---------+----------+--------+---------+-------+
+                                        |
+                              [ Kafka Bus + Schema Registry ]
+                                        |
+                  +---------+-----------+-----------+----------+
+                  |         |           |           |          |
+                  v         v           v           v          v
+                billing   payment   notification  ticket   analytics (future)
 ```
 
 Key principles (see ADRs for the authoritative rules):
@@ -107,8 +115,12 @@ Key principles (see ADRs for the authoritative rules):
 | Auth | Keycloak (OAuth2 / OIDC), JWT, mTLS internal |
 | Observability | OpenTelemetry, Prometheus, Grafana, Loki, Tempo |
 | Resilience | Resilience4j |
-| Container / Orchestration | Docker, Kubernetes |
-| CI/CD | GitHub Actions |
+| Distributed locking | Redisson (Redis-backed) |
+| Secrets | HashiCorp Vault (Kubernetes auth, KV v2) |
+| Service mesh | Linkerd (mTLS, `Server`/`AuthorizationPolicy` CRDs) |
+| Frontend | SvelteKit (`frontend/web`), served via `web-bff` |
+| Container / Orchestration | Docker Compose (local), Kubernetes + Helm (`deploy/helm/`) |
+| CI/CD | GitHub Actions (build/test, Docker image publish, ephemeral-Kind deploy smoke test, MkDocs site) |
 
 Authoritative stack: [ADR-003](architecture/adr/ADR-003-technology-stack.md).
 
@@ -117,13 +129,19 @@ Authoritative stack: [ADR-003](architecture/adr/ADR-003-technology-stack.md).
 ```text
 telco-crm/
 ├── architecture/adr/      Architecture Decision Records (technical authority)
-├── docs/                  Product and architecture documentation
+├── docs/                  Product and architecture documentation (published via MkDocs + GitHub Pages)
 │   ├── product/           BRD, requirements, roadmap, personas, glossary
-│   ├── architecture/      service catalog, event catalog
+│   ├── architecture/      service catalog, event catalog, security posture, platform capabilities
+│   ├── api-contracts/     per-service REST API contracts
+│   ├── runbooks/          operational runbooks
 │   └── erd/               per-service entity-relationship diagrams
 ├── platform/              Reusable platform (BOM, core modules, starters)
+├── microservices/         All 16 Spring Boot services + shared configs (see Services below)
+├── frontend/web/          SvelteKit web console (telco-web)
+├── deploy/                Helm charts (dependencies, telco-service), Kind cluster config, smoke tests
+├── infra/docker/          Local Docker Compose stack and shared builder image
 ├── .claude/               Platform operating context, rules, execution roadmap
-└── .github/               Community health files, templates, CI workflows
+└── .github/               Community health files, templates, CI workflows (ci, deploy, docs, dependabot)
 ```
 
 ## Platform Modules
@@ -162,6 +180,10 @@ Rule: business logic is forbidden in platform modules; core modules carry no Spr
 | payment-service | 9008 | Domain Orchestration |
 | notification-service | 9009 | Simple Service Layer |
 | ticket-service | 9010 | CQRS + Mediator |
+| campaign-service | 9011 | CQRS + Mediator |
+| dispute-service | 9012 | Domain Orchestration |
+| fraud-service | 9013 | CQRS + Mediator |
+| web-bff | 9020 | Simple Service Layer |
 
 Authoritative catalog: [docs/architecture/service-catalog.md](docs/architecture/service-catalog.md).
 
@@ -186,6 +208,9 @@ as services are added. See the roadmap for delivery sequencing.
 
 ## Documentation
 
+The full documentation set is also published as a searchable MkDocs Material site:
+**[omerekmen.github.io/turkcell-telco-crm](https://omerekmen.github.io/turkcell-telco-crm/)**.
+
 | Topic | Document |
 | --- | --- |
 | Documentation index | [docs/README.md](docs/README.md) |
@@ -204,9 +229,11 @@ as services are added. See the roadmap for delivery sequencing.
 ## Roadmap
 
 Delivery is phased: P0 platform foundation, P1 identity and master data, P2 onboarding saga,
-P3 revenue cycle, P4 engagement and support, P5 hardening and release. See
-[docs/product/roadmap.md](docs/product/roadmap.md) and the live execution status in
-[docs/tasks/STATUS.md](docs/tasks/STATUS.md).
+P3 revenue cycle, P4 engagement and support, P5 hardening and release. The MVP (Sprints 01-15) is
+complete; post-MVP work has since shipped the web console, distributed locking, secret management,
+service mesh, chaos engineering, campaign/catalog validation, invoice disputes, and SIM-swap fraud
+detection (Sprints 16-24). See [docs/product/roadmap.md](docs/product/roadmap.md) and the live
+execution status in [docs/tasks/STATUS.md](docs/tasks/STATUS.md).
 
 ## Contributing
 

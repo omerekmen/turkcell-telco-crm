@@ -8,12 +8,13 @@
 | Version | 1.0 |
 | Parent | [../product/BRD.md](../product/BRD.md) |
 | Technical authority | ADR-004 (architecture modes), ADR-006 (database), ADR-005 (communication) |
-| Last updated | 2026-06-19 |
+| Last updated | 2026-08-23 |
 
-This catalog is the authoritative list of MVP services: ports, bounded contexts, aggregates,
-architecture mode (ADR-004), and key APIs/events. Each service owns its PostgreSQL schema
-(database-per-service, ADR-006). Architecture mode assignments are recommendations subject to
-final Tech Lead Agent approval.
+This catalog is the authoritative list of domain services (the original MVP set plus the post-MVP
+additions that have since shipped): ports, bounded contexts, aggregates, architecture mode
+(ADR-004), and key APIs/events. Each service owns its PostgreSQL schema (database-per-service,
+ADR-006). Architecture mode assignments are recommendations subject to final Tech Lead Agent
+approval.
 
 ---
 
@@ -174,7 +175,7 @@ final Tech Lead Agent approval.
 | --- | --- |
 | Simple Service Layer | notification-service |
 | CQRS + Mediator | identity, customer, product-catalog, subscription, usage, ticket, campaign, fraud |
-| Domain Orchestration | order, billing, payment |
+| Domain Orchestration | order, billing, payment, dispute |
 | N/A (infrastructure) | api-gateway, discovery-server, config-server |
 
 Each service MUST declare its mode in its own `README.md` (ADR-004).
@@ -197,6 +198,7 @@ Each service MUST declare its mode in its own `README.md` (ADR-004).
 | ticket-service | Ticket, TicketComment, SLA |
 | campaign-service | Campaign, CampaignRedemption |
 | fraud-service | MsisdnLifecycleSignal, FraudRule, FraudSignal, FraudCase |
+| dispute-service | Dispute, DisputeEvidence, DisputeStateHistory |
 
 Detailed entity-relationship diagrams: [`docs/erd/`](../erd/).
 
@@ -225,6 +227,7 @@ database. Cache/search are added only where justified.
 | ticket-service | PostgreSQL | - | - | - |
 | campaign-service | PostgreSQL | - (transactional, per-customer-consistent - ADR-027) | - | - |
 | fraud-service | PostgreSQL | Redis (optional velocity counters, not source of truth - ADR-029) | - | - |
+| dispute-service | PostgreSQL (`dispute-db`) | - | - | MinIO (evidence objects) |
 
 Notes:
 
@@ -243,9 +246,11 @@ Notes:
 
 ## 6. Post-MVP Services (in progress)
 
-This catalog's Sections 1-5 are the MVP-scoped service list (11 services, ports 8080-9010). The
-services below are post-MVP additions tracked in `docs/product/roadmap.md` Section 5 and
-`docs/tasks/STATUS.md`; each is listed here only once its port is confirmed and its scaffold exists.
+This catalog's Sections 1-5 originally scoped only the MVP service list (11 services, ports
+8080-9010). campaign-service (port 9011, ADR-027) and fraud-service (port 9013, ADR-029) have
+since been built and are now folded directly into Sections 1-5 above alongside the MVP services.
+dispute-service (port 9012) is the one remaining post-MVP addition tracked separately here,
+per `docs/product/roadmap.md` Section 5 and `docs/tasks/STATUS.md`.
 
 | Service | Port | Bounded context | Architecture mode | Aggregates | Infrastructure profile | ADR | Owning sprint |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -255,8 +260,9 @@ dispute-service never writes to `billing-db` or `payment-db` directly (ADR-006);
 billing-service and payment-service is via outbox/inbox events (ADR-009/019), and it is audit-mandated
 (ADR-021, NFR-12) given its financial impact.
 
-Ports 9011 (campaign-service, ADR-027) and 9013 (fraud-service, ADR-029) are reserved in the roadmap
-but have no scaffold yet - they are not listed here until built, per this section's own rule above.
+`web-bff` (port 9020, Simple Service Layer, Sprint 16) is the SvelteKit web console's backend-for-
+frontend; it is presentation-tier rather than a domain service and is intentionally out of scope for
+this domain-service catalog.
 
 ---
 
