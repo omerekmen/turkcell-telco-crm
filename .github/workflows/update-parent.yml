@@ -31,20 +31,35 @@ jobs:
 
       - name: Build commit message
         id: msg
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          echo "message<<EOF" >> $GITHUB_OUTPUT
-          echo "chore: update telco-crm submodule" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "${{ github.event.head_commit.message }}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # A random per-run delimiter (not a fixed "EOF") avoids collision if the
+          # commit message itself ever contains a line matching the delimiter, and
+          # passing the message via env: (rather than interpolating ${{ }} directly
+          # into the script) avoids both that collision class of bug and shell/
+          # injection risk from arbitrary commit message content (quotes,
+          # backticks, $(...), multiple lines) - a long, multi-line squash-merge
+          # commit message broke the previous fixed-"EOF" + direct-interpolation
+          # version outright ("Invalid value. Matching delimiter not found 'EOF'").
+          delimiter="$(openssl rand -hex 8)"
+          {
+            echo "message<<${delimiter}"
+            echo "chore: update telco-crm submodule"
+            echo ""
+            echo "$HEAD_COMMIT_MESSAGE"
+            echo "${delimiter}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Commit changes
+        env:
+          COMMIT_MESSAGE: ${{ steps.msg.outputs.message }}
         run: |
           git add telco-crm
 
           git diff --cached --quiet && exit 0
 
-          git commit -m "${{ steps.msg.outputs.message }}"
+          git commit -m "$COMMIT_MESSAGE"
 
       - name: Push changes
         run: |
