@@ -1,0 +1,25 @@
+# dispute-service Kubernetes (in-cluster Helm) overrides, activated as
+# SPRING_PROFILES_ACTIVE=dev,k8s (Feature 18.5, ADR-025 Section 4). Replaces the `docker` profile for
+# in-cluster deployment: same in-cluster hostnames as application-docker.yml (kept, non-secret), but the
+# DB username/password are read from the pod environment (Vault-sourced via the CSI-synced Secret,
+# 18.5.1/18.5.3) instead of the committed `dispute`/`dispute` plaintext the `docker` profile bakes in.
+#
+# This file did not exist before (dispute-service's Helm values.yaml already set
+# SPRING_PROFILES_ACTIVE: dev,k8s, but with no application-k8s.yml to load, every property below
+# silently fell back to application.yml's bare defaults - all localhost - which fails Spring context
+# startup outright once the datasource tries to connect: live-verified via the ephemeral Kind smoke-test
+# deploy, "Connection refused" against localhost:5432 in-cluster).
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/dispute_db
+    username: ${DISPUTE_DB_USER}
+    password: ${DISPUTE_DB_PASSWORD}
+
+security:
+  oauth2:
+    resourceserver:
+      jwt:
+        jwks-uri: http://keycloak:8080/realms/telco-crm/protocol/openid-connect/certs
+
+minio:
+  endpoint: http://minio:9000
