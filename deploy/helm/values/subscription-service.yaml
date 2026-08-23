@@ -37,6 +37,15 @@ config:
   # reads DB credentials from the environment instead.
   SPRING_PROFILES_ACTIVE: dev,k8s
   EUREKA_USERNAME: eureka
+  # Was missing entirely: microservices/configs/subscription-service/application.yml's
+  # telco.platform.lock.redis.address embeds ${REDIS_HOST:localhost} directly (not the
+  # spring.data.redis.host fallback LockAutoConfiguration also supports) - without this,
+  # the Redisson-backed distributedLock bean tries to dial localhost:6379 in-cluster and
+  # fails to connect, which is a REQUIRED bean for the MsisdnReservationExpiryReaper
+  # scheduled job, so Spring context startup fails outright (crashloop, not a graceful
+  # degradation). Live-verified: identical failure mode to billing-service/
+  # campaign-service, the other two platform.lock consumers - all three needed this.
+  REDIS_HOST: redis
 
 secrets:
   CONFIG_SERVER_PASSWORD: config

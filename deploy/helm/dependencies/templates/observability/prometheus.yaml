@@ -1,3 +1,4 @@
+{{- if .Values.observability.enabled }}
 {{- $c := "prometheus" -}}
 # Prometheus - metrics scrape + SLO alert rules (ADR-012, NFR-09). The scrape config
 # is the in-cluster variant (files/observability/prometheus.yml): compose
@@ -102,3 +103,4 @@ spec:
   resources:
     requests:
       storage: {{ .Values.observability.prometheus.storage | quote }}
+{{- end }}

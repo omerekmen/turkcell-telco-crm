@@ -7,7 +7,9 @@
 # live via `linkerd identity <pod>` against a real running api-gateway pod
 # (see this sprint's README 19.3 verification record for the exact output).
 # Referenced by templates/authorizationpolicy.yaml's requiredAuthenticationRefs.
-{{- if .Values.meshPolicy.enabled }}
+# Also gated by `.Values.linkerdCRDsInstalled` - a `policy.linkerd.io` CRD
+# resource like its sibling templates (see server.yaml's value comment).
+{{- if and .Values.linkerdCRDsInstalled .Values.meshPolicy.enabled }}
 apiVersion: policy.linkerd.io/v1alpha1
 kind: MeshTLSAuthentication
 metadata:

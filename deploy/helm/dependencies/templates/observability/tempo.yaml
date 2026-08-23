@@ -1,3 +1,4 @@
+{{- if .Values.observability.enabled }}
 {{- $c := "tempo" -}}
 # Grafana Tempo - trace storage, receives OTLP from the collector (ADR-012). Config
 # reused verbatim from infra/docker/observability/tempo.
@@ -101,3 +102,4 @@ spec:
   resources:
     requests:
       storage: {{ .Values.observability.tempo.storage | quote }}
+{{- end }}

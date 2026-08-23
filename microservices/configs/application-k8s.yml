@@ -1,0 +1,42 @@
+# Shared Kubernetes (in-cluster Helm) overrides applied to ALL services when
+# SPRING_PROFILES_ACTIVE includes 'k8s'. Mirrors application-docker.yml's role for the
+# Docker Compose stack: overrides dev (localhost) addresses with in-cluster Service DNS
+# names. Loaded AFTER application-dev.yml so these values win.
+#
+# This file did not exist before. application-docker.yml already had the correct
+# in-cluster-shaped values (Kubernetes Service names for the dependencies chart's
+# backends are the same short names Docker Compose uses), but every service's Helm
+# values.yaml activates `dev,k8s`, not `dev,docker` - so NONE of application-docker.yml's
+# overrides ever applied to a Kubernetes deployment, and every service silently fell back
+# to application.yml's bare (localhost) defaults for all of them. Eureka discovery is the
+# one that's fatal: every service (provider and consumer alike) tried registering with
+# and querying local host:8761, so no service could ever discover any other service
+# in-cluster - live-verified via the ephemeral Kind smoke-test deploy, where
+# product-catalog-service's own logs showed "Connect to http://localhost:8761 failed:
+# Connection refused" and api-gateway logged "No servers available for service:
+# product-catalog-service" on every request. Loki/OTLP tracing silently degrade instead
+# of crashing (fire-and-forget exporters), which is why this was never caught by any
+# per-service health check - it only surfaces on a real cross-service call through the
+# gateway, exactly what Smoke tests is for.
+
+eureka:
+  instance:
+    hostname: ${spring.application.name}
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_USERNAME:eureka}:${EUREKA_PASSWORD:eureka}@discovery-server:8761/eureka
+
+management:
+  otlp:
+    tracing:
+      endpoint: http://otel-collector:4318/v1/traces
+
+spring:
+  kafka:
+    template:
+      observation-enabled: true
+    listener:
+      observation-enabled: true
+
+loki:
+  url: http://loki:3100/loki/api/v1/push

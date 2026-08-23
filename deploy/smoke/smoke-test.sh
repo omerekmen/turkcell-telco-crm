@@ -65,6 +65,14 @@ READINESS_SERVICES="${READINESS_SERVICES:-config-server discovery-server api-gat
 # Retry tuning.
 HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
 TOKEN_RETRIES="${TOKEN_RETRIES:-30}"
+# A Deployment reporting Ready (readiness-probe green) is not the same as the gateway's
+# Eureka client already seeing it: registration + the gateway's own registry-fetch cache
+# refresh both lag behind pod readiness by tens of seconds. Live-verified in the ephemeral
+# Kind smoke-test cluster: api-gateway logged "No servers available for service:
+# product-catalog-service" -> 503 on the very first READ attempt, moments after
+# product-catalog-service's own Deployment had already gone Ready. 12 retries * 5s = up to
+# 60s, comfortably covering Eureka's default ~30s registry-fetch-interval with margin.
+READ_RETRIES="${READ_RETRIES:-12}"
 RETRY_DELAY="${RETRY_DELAY:-5}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-10}"
 READINESS_TIMEOUT="${READINESS_TIMEOUT:-300s}"
@@ -195,9 +203,15 @@ ok "obtained a subscriber access token"
 # 3c. Authenticated READ through the gateway (expect $EXPECTED_READ_STATUS).
 # --------------------------------------------------------------------------- #
 log "calling authenticated READ ${READ_PATH} through the gateway..."
-read_code="$(gateway_status "$TMP_DIR/read.json" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  "${GATEWAY_URL}${READ_PATH}" || true)"
+read_code=""
+for i in $(seq 1 "$READ_RETRIES"); do
+  read_code="$(gateway_status "$TMP_DIR/read.json" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    "${GATEWAY_URL}${READ_PATH}" || true)"
+  [ "$read_code" = "$EXPECTED_READ_STATUS" ] && break
+  log "attempt $i/$READ_RETRIES: READ ${READ_PATH} returned HTTP $read_code (expected $EXPECTED_READ_STATUS) - retrying, likely Eureka propagation lag"
+  sleep "$RETRY_DELAY"
+done
 if [ "$read_code" != "$EXPECTED_READ_STATUS" ]; then
   log "response body: $(head -c 500 "$TMP_DIR/read.json" 2>/dev/null || true)"
   fail "authenticated READ ${READ_PATH} returned HTTP $read_code (expected $EXPECTED_READ_STATUS)"

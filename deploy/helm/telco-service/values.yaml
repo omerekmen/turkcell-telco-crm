@@ -242,6 +242,23 @@ meshPolicy:
   authorizedClients:
     - api-gateway
 
+# Orthogonal to meshPolicy.enabled above: this gates whether ANY
+# `policy.linkerd.io` CRD resource is rendered at all (templates/server.yaml,
+# authorizationpolicy.yaml, meshtlsauthentication.yaml), because those CRDs
+# only exist in a cluster where Linkerd itself is installed - applying one
+# where it isn't fails Helm outright ("no matches for kind Server/
+# AuthorizationPolicy/MeshTLSAuthentication in version policy.linkerd.io/...",
+# not a resource that can be individually skipped per-service. `true` (this
+# default) is correct for every real deployment target, which installs
+# Linkerd first (deploy/RUNBOOK.md Section 2.4). Set to `false` only for a
+# cluster that never installs Linkerd at all, e.g.
+# .github/workflows/deploy.yml's ephemeral Kind smoke-test cluster - do NOT
+# use this to opt a single service out of its Server/AuthorizationPolicy
+# (that's meshPolicy.enabled, which stays fully independent so api-gateway's
+# documented "Server still renders, no AuthorizationPolicy attached" behavior
+# above is unaffected by this flag).
+linkerdCRDsInstalled: true
+
 # Kubernetes NetworkPolicy per-service allow rules (Feature 19.4.2/19.4.3,
 # ADR-026 Section 3). Compensating control for pods that are not (yet) meshed
 # - see deploy/helm/dependencies/templates/networkpolicy-default-deny.yaml for

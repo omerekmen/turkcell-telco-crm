@@ -40,6 +40,16 @@ config:
   # environment instead of the docker profile's plaintext DB block.
   SPRING_PROFILES_ACTIVE: dev,k8s
   EUREKA_USERNAME: eureka
+  # Was missing entirely: microservices/configs/dispute-service/application-k8s.yml
+  # didn't exist even though SPRING_PROFILES_ACTIVE above activates it, so every
+  # property in application.yml silently fell back to its bare (localhost) default -
+  # datasource included, which fails Spring context startup outright ("Connection
+  # refused" against localhost:5432 in-cluster). application-k8s.yml now exists with
+  # the same three overrides as env vars here, so this takes effect immediately
+  # against an already-built image without waiting for a new one.
+  DISPUTE_DB_URL: jdbc:postgresql://postgres:5432/dispute_db
+  KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/telco-crm/protocol/openid-connect/certs
+  MINIO_ENDPOINT: http://minio:9000
 
 secrets:
   CONFIG_SERVER_PASSWORD: config

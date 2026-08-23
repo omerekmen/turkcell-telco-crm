@@ -1,11 +1,17 @@
 # Feature 19.3.1 (ADR-026 Section 2, Layer 1). A Linkerd `Server` selecting this
-# release's Pod label + app port. Rendered unconditionally for every one of the
-# 13 telco-service releases (10 domain services + api-gateway + config-server +
-# discovery-server) - a Server is the prerequisite object an
+# release's Pod label + app port. Rendered for every one of the 13
+# telco-service releases (10 domain services + api-gateway + config-server +
+# discovery-server) whenever linkerdCRDsInstalled is true (this chart's
+# default - see that value's comment) - a Server is the prerequisite object an
 # AuthorizationPolicy (templates/authorizationpolicy.yaml) attaches to; without
 # it, Linkerd's default policy is unrestricted-within-mesh, not deny-by-default
 # (see the values.yaml `meshPolicy` comment for which services actually get a
-# restricting AuthorizationPolicy attached - api-gateway deliberately does not).
+# restricting AuthorizationPolicy attached - api-gateway deliberately does
+# not, though it still gets a Server: gated on linkerdCRDsInstalled here, NOT
+# meshPolicy.enabled, so api-gateway's `meshPolicy.enabled: false` continues
+# to mean only "no AuthorizationPolicy", exactly as documented in
+# deploy/helm/values/api-gateway.yaml - it does not also drop the Server).
+{{- if .Values.linkerdCRDsInstalled }}
 apiVersion: policy.linkerd.io/v1beta1
 kind: Server
 metadata:
@@ -23,3 +29,4 @@ spec:
   # All 13 services are plain Spring Boot HTTP/1.1 servers (Spring Cloud
   # Gateway included) - no HTTP/2 or gRPC in this platform (ADR-005).
   proxyProtocol: HTTP/1
+{{- end }}

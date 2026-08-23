@@ -137,6 +137,16 @@ keycloak:
 
 # ------------------------------------------------------------- Observability
 observability:
+  # `true` (this default) renders all 5 observability backends (otelCollector,
+  # tempo, loki, prometheus, grafana) - correct for every real deployment
+  # target. Set to `false` to skip them entirely: a CPU/pod-count reduction
+  # for a constrained cluster (e.g. a single-node ephemeral Kind cluster on a
+  # shared CI runner, .github/workflows/deploy.yml) where a smoke test's job
+  # is verifying the core platform deploys and passes smoke tests, not that
+  # the observability stack itself deploys - mirrors infra/docker/compose.yml,
+  # where the same 5 components are already an opt-in `observability` profile
+  # rather than part of the default local-dev stack.
+  enabled: true
   otelCollector:
     image: otel/opentelemetry-collector-contrib:0.119.0
     grpcPort: 4317

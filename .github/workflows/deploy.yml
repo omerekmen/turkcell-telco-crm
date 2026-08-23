@@ -168,9 +168,40 @@ jobs:
           # tracked follow-up (it currently exits 1 at the Confluent "Configuring"
           # stage), and --wait would hang on it. We wait explicitly on the CORE
           # deps the services actually need, below.
+          #
+          # networkPolicy.enabled=false: the default-deny baseline's only allow
+          # rules open port 4143 (the Linkerd mesh proxy's inbound port) - this
+          # ephemeral Kind cluster never installs Linkerd (no such step in this
+          # workflow), so nothing here is meshed and nothing ever listens on
+          # 4143. Under default-deny with those rules, ALL pod-to-pod backend
+          # traffic is blocked regardless, including minio-createbuckets's
+          # direct connection to minio:9000 (its post-install hook Job, which
+          # is not a telco-service release and gets no egress-allow rule at
+          # all) - it hangs at "waiting for minio..." for the full --timeout
+          # every run, confirmed via kubectl logs/describe. NetworkPolicy
+          # enforcement is a production/meshed-environment concern (ADR-026);
+          # this smoke-test cluster's job is verifying the app charts deploy
+          # and become healthy, not re-proving the mesh policy - production
+          # deploys (where Linkerd is actually installed) keep it enabled.
+          #
+          # observability.enabled=false: skips otel-collector/tempo/loki/
+          # prometheus/grafana (5 fewer pods, ~250m fewer CPU requests) -
+          # mirrors infra/docker/compose.yml, where the same 5 components are
+          # already an opt-in `observability` profile, not part of the default
+          # local-dev stack. This cluster's total CPU *requests* across every
+          # dependency + all 13 app services (even at 1 replica each, see
+          # autoscaling.enabled=false below) exceed what a single-node Kind
+          # cluster on a shared GitHub-hosted runner can schedule - live-
+          # verified: 10 of 16 app pods stuck Pending ("Insufficient cpu")
+          # once observability + every backend + the first ~6 services were
+          # already running. This is one of two levers pulled together to fit
+          # (see the resources.requests.cpu override below); production
+          # deploys keep the full observability stack.
           helm upgrade --install telco-deps deploy/helm/dependencies \
             -n "$NAMESPACE" \
             --set createNamespace=false \
+            --set networkPolicy.enabled=false \
+            --set observability.enabled=false \
             --timeout 20m
 
       - name: Wait for core dependencies
@@ -195,13 +226,91 @@ jobs:
           install_service() {
             svc="$1"
             echo "==> helm upgrade --install $svc (tag $TAG)" >&2
+            # networkPolicy.enabled=false: matches the dependencies chart's own
+            # override above - this chart's default-deny-compatible allow rules
+            # are equally mesh-only (port 4143), and this cluster has no mesh.
+            #
+            # linkerdCRDsInstalled=false: this chart also renders Server/
+            # AuthorizationPolicy/MeshTLSAuthentication (policy.linkerd.io CRD
+            # resources) - applying those where Linkerd's CRDs were never
+            # installed fails Helm outright ("no matches for kind Server in
+            # version policy.linkerd.io/v1beta1"), not something
+            # meshPolicy.enabled alone can suppress (it deliberately does NOT
+            # gate the Server object - see values.yaml's linkerdCRDsInstalled
+            # comment for why that's a separate, orthogonal flag).
+            #
+            # autoscaling.enabled=false: the chart's default HPA (minReplicas:
+            # 2, 250m CPU request per pod) needs 2 * 13 services = 26 app pods
+            # scheduled immediately on top of every stateful dependency - live-
+            # verified this exceeds a single-node Kind cluster's allocatable
+            # CPU on a GitHub-hosted runner (a second api-gateway replica sat
+            # Pending: "Insufficient cpu" until the rollout-status wait timed
+            # out at 600s). One replica per service is enough for a smoke test;
+            # production deploys keep autoscaling enabled.
+            #
+            # resources.requests.cpu: even at 1 replica each (no HPA), 13
+            # services * the chart's default 250m request = 3.25 vCPU, plus
+            # ~700m for the backend dependencies (observability disabled
+            # above) - still more than a single-node Kind cluster on a shared
+            # GitHub-hosted runner can schedule (live-verified: order-service,
+            # 7th in the install order, sat Pending on "Insufficient cpu" with
+            # only 6 of 13 app pods running at 250m/service). Tried 130m next
+            # (after also raising probes.startup.failureThreshold below, see
+            # its own note) - got all the way to fraud-service, the LAST of
+            # 13, before hitting "Insufficient cpu" again: 130m fit 12 running
+            # services with no headroom for the 13th. 100m fits all 13 with
+            # margin to spare. `requests` gates scheduling admission;
+            # `limits.cpu` (the chart's default 500m) is untouched, so a pod
+            # can still burst above this once scheduled if the node has spare
+            # cycles. Combined with observability.enabled=false above, this is
+            # one of three levers pulled together to fit the platform on one
+            # CI node; production deploys keep the chart's default request.
+            #
+            # probes.startup.failureThreshold=45: under REAL node contention
+            # (not just scheduling admission), `requests.cpu` also sets the
+            # cgroup's proportional CPU share (CFS shares) - a low request
+            # gets meaningfully less wall-clock CPU than the chart's default
+            # once every pod on the node is actually competing for cycles,
+            # not just less priority for being scheduled at all. Live-
+            # verified at 100m, BEFORE installing services sequentially
+            # (see the install-then-wait loop below): identity-service
+            # scheduled and started fine but was killed and restarted 3 times
+            # by the chart's default startup probe budget (10s + 10s*30 = ~5
+            # min) before it finished booting under that throttling.
+            # Installing one service at a time instead of all-at-once removed
+            # most of that simultaneous-boot contention, which is what made
+            # dropping back to 100m safe again - kept at 45 (~7.7 min, still
+            # under the rollout-status --timeout=600s below and Kubernetes'
+            # own Deployment progressDeadlineSeconds default) regardless, as
+            # a safety margin a smoke test can afford; production deploys
+            # keep the chart's default budget.
+            #
+            # config.EUREKA_HOST=discovery-server: THE root cause of Smoke tests
+            # failing outright ("500 Internal Server Error" on every authenticated
+            # READ, api-gateway's own logs showing "No servers available for
+            # service: product-catalog-service"). microservices/configs/
+            # application-docker.yml already points Eureka at discovery-server:8761
+            # correctly, but every service's SPRING_PROFILES_ACTIVE is dev,k8s, not
+            # dev,docker - so that file never loaded for a Kubernetes deployment,
+            # and application.yml's bare default (${EUREKA_HOST:localhost}) applied
+            # instead, for EVERY service, both registering AND discovering.
+            # microservices/configs/application-k8s.yml now exists (mirroring
+            # application-docker.yml) as the proper long-term fix, taking effect on
+            # the next image build; this env var takes effect immediately against
+            # the already-built image being used to verify this pipeline.
             helm upgrade --install "$svc" deploy/helm/telco-service \
               -n "$NAMESPACE" \
               -f "deploy/helm/values/${svc}.yaml" \
               --set image.registry=ghcr.io \
               --set "image.owner=${OWNER}" \
               --set "image.tag=${TAG}" \
-              --set "imagePullSecrets[0].name=${PULL_SECRET}"
+              --set "imagePullSecrets[0].name=${PULL_SECRET}" \
+              --set networkPolicy.enabled=false \
+              --set linkerdCRDsInstalled=false \
+              --set autoscaling.enabled=false \
+              --set resources.requests.cpu=100m \
+              --set probes.startup.failureThreshold=45 \
+              --set config.EUREKA_HOST=discovery-server
           }
 
           # config-server first (every other service bootstraps its config from it),
@@ -216,14 +325,22 @@ jobs:
                 order-service subscription-service usage-service billing-service \
                 payment-service notification-service ticket-service campaign-service \
                 dispute-service fraud-service"
+          # Install-then-wait ONE service at a time (like config-server/discovery-server
+          # above), not install-all-then-wait-all: batch-installing let all 13 services
+          # start their JVM bootstrap simultaneously, spiking CPU contention on this
+          # single-node cluster exactly during the window each pod is most CPU-hungry
+          # (class loading, Flyway, Hibernate bootstrap) - live-verified this caused
+          # startup-probe kills regardless of how far resources.requests.cpu /
+          # probes.startup.failureThreshold above were tuned, since the problem was
+          # peak CONCURRENT demand, not any one service's own budget. One at a time
+          # keeps at most ~2 services in their expensive boot phase simultaneously
+          # (the one starting plus whichever hasn't reached steady-state idle CPU
+          # yet), matching what already worked for config-server/discovery-server.
+          # Slower overall for this step, but a smoke test can afford that; rolling
+          # deploys use maxUnavailable:0, so rollout status only goes green once the
+          # new pod is Ready - a bad image blocks then fails, dropping into rollback.
           for svc in $REST; do
             install_service "$svc"
-          done
-
-          # Rolling deploys use maxUnavailable:0, so rollout status only goes green
-          # once the new pods are Ready. A bad image => this blocks then fails, which
-          # (like a smoke failure) drops into the rollback step below.
-          for svc in $REST; do
             echo "==> rollout status $svc" >&2
             kubectl -n "$NAMESPACE" rollout status deploy/"$svc" --timeout=600s
           done
@@ -278,4 +395,35 @@ jobs:
           echo "::endgroup::"
           echo "::group::Recent events"
           kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -50
+          echo "::endgroup::"
+          # Container logs for every non-Ready pod - the events dump above is
+          # tail'd to 50 lines total across the whole namespace, so a crashing
+          # pod's own reason (stack trace, OOMKilled, config error) is easily
+          # cut off by other pods' events. --previous captures the last
+          # terminated instance's logs, which is where a crash-loop's actual
+          # failure reason lives (the CURRENT instance may not have logged
+          # anything relevant yet).
+          echo "::group::Logs for non-Ready pods"
+          for pod in $(kubectl -n "$NAMESPACE" get pods --no-headers | awk '{split($2,r,"/"); if (r[1] != r[2]) print $1}'); do
+            echo "--- $pod (current) ---"
+            kubectl -n "$NAMESPACE" logs "$pod" --tail=100
+            echo "--- $pod (previous, if any) ---"
+            kubectl -n "$NAMESPACE" logs "$pod" --previous --tail=100 2>&1
+          done
+          echo "::endgroup::"
+          # A pod can be fully Ready (passes its own health check) and still 500 on an
+          # actual request - the loop above only catches crash-looping pods, missing that
+          # case entirely. api-gateway and product-catalog-service are the two names in
+          # the smoke test's own READ_PATH edge chain (Ingress -> gateway -> JWT ->
+          # Eureka route -> product-catalog-service -> its DB); grep for ERROR/Exception
+          # so a healthy service's routine INFO logging doesn't bury the one line that
+          # matters, same rationale as the --previous capture above.
+          echo "::group::Logs for api-gateway and product-catalog-service (grepped for errors)"
+          for svc in api-gateway product-catalog-service; do
+            pod=$(kubectl -n "$NAMESPACE" get pods -l "app.kubernetes.io/name=${svc}" -o name | head -1)
+            if [ -n "$pod" ]; then
+              echo "--- $pod ---"
+              kubectl -n "$NAMESPACE" logs "$pod" --tail=1000 | grep -iE "error|exception|caused by|warn" || echo "(no ERROR/Exception/WARN lines in the last 1000)"
+            fi
+          done
           echo "::endgroup::"
