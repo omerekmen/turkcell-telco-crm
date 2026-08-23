@@ -9,11 +9,24 @@ name: Deploy
 # the ADR-014 pipeline. The image build+push itself lives in ci.yml (task 15.1.2).
 #
 # ORDER GUARANTEE (deploy runs only AFTER images exist):
-#   * workflow_run on the "CI" workflow, gated to conclusion == success, so the
-#     images for the changed services have already been pushed to GHCR before a
-#     deploy can start. `github.event.workflow_run.head_sha` is the exact commit
-#     CI built, so the sha-<12> tag we deploy matches what CI published.
-#   * workflow_dispatch lets an operator redeploy a chosen tag on demand.
+#   * workflow_run on the "CI" workflow, gated to conclusion == success, so
+#     conclusion is 'success' whenever CI passes - including when its image-build
+#     job never ran at all, because ci.yml's "Detect changed services" job only
+#     rebuilds services whose OWN directory changed in that push (or every
+#     service, only when platform/ or another shared-foundation path changed).
+#     The default tag is therefore `latest`, not `sha-<12>` of the triggering
+#     commit: ci.yml pushes `:latest` for every service it DOES build, and since
+#     each of the 15 telco-<service> image repos is tagged independently,
+#     `:latest` always resolves to that service's own most-recently-verified
+#     build regardless of which commit last touched it - unlike a commit-SHA
+#     tag, which usually doesn't exist for most of the 15 services (only the
+#     ones that specific commit happened to change). Live-verified: a
+#     workflow-only commit (touching only this file, no microservice code)
+#     computed a sha-<12> tag nothing had ever built, and config-server sat in
+#     ImagePullBackOff for the full 10-minute rollout timeout before the real
+#     cause ("manifest unknown") ever surfaced.
+#   * workflow_dispatch lets an operator redeploy a specific tag (sha-<12>,
+#     a version tag, or `latest`) on demand via its image_tag input.
 #
 # APPROVAL GATE:
 #   The job binds to the `ephemeral-kind` GitHub Environment. Configure that
@@ -91,7 +104,11 @@ jobs:
           if [ -n "$INPUT_TAG" ]; then
             TAG="$INPUT_TAG"
           else
-            TAG="sha-$(echo "${{ steps.target.outputs.sha }}" | cut -c1-12)"
+            # See the file header's ORDER GUARANTEE note: `latest` (not a
+            # commit-SHA tag) is what CI actually guarantees exists for every
+            # one of the 15 services, since it publishes :latest independently
+            # per service every time that service's own image gets rebuilt.
+            TAG="latest"
           fi
           echo "owner=$OWNER" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
